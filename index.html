@@ -46,17 +46,18 @@
             const [editingItem, setEditingItem] = useState(null); 
 
             // Recurring Form State (Inside Menu)
+            // 초기값을 빈 문자열로 설정하여 입력 시 지울 필요 없게 함
             const [recurStartAmPm, setRecurStartAmPm] = useState("PM");
-            const [recurStartH, setRecurStartH] = useState("2");
-            const [recurStartM, setRecurStartM] = useState("00");
+            const [recurStartH, setRecurStartH] = useState("");
+            const [recurStartM, setRecurStartM] = useState("");
             
             const [recurEndAmPm, setRecurEndAmPm] = useState("PM");
-            const [recurEndH, setRecurEndH] = useState("3");
-            const [recurEndM, setRecurEndM] = useState("00");
+            const [recurEndH, setRecurEndH] = useState("");
+            const [recurEndM, setRecurEndM] = useState("");
 
             const [recurText, setRecurText] = useState("");
             const [recurDays, setRecurDays] = useState([]); 
-            const [editingRecurId, setEditingRecurId] = useState(null); 
+            const [editingRecurGroupId, setEditingRecurGroupId] = useState(null); // ID of one item in the group being edited
 
             // --- Init & Persistence ---
             useEffect(() => {
@@ -85,10 +86,10 @@
             };
 
             const to24Hour = (ampm, h, m) => {
-                let hour = parseInt(h, 10);
+                let hour = parseInt(h || 0, 10);
                 if (ampm === 'PM' && hour < 12) hour += 12;
                 if (ampm === 'AM' && hour === 12) hour = 0;
-                return `${hour < 10 ? '0'+hour : hour}:${m}`;
+                return `${hour < 10 ? '0'+hour : hour}:${m || '00'}`;
             };
 
             const to12HourParts = (timeStr) => {
@@ -124,7 +125,6 @@
                     const end = formatAmPm(eh);
                     
                     const startStr = `${start.ampm} ${start.h12}:${sm < 10 ? '0'+sm : sm}`;
-                    const endStr = `${end.ampm} ${end.h12}:${em < 10 ? '0'+em : em}`;
                     
                     const sLabel = sm === 0 ? `${start.ampm} ${start.h12}시` : startStr;
                     const eLabel = em === 0 ? `${end.h12}시` : `${end.h12}:${em < 10 ? '0'+em : em}`;
@@ -169,6 +169,32 @@
 
             const getDayName = (dayIndex) => ['일','월','화','수','목','금','토'][dayIndex];
 
+            // --- Grouping Logic for Recurring Schedules ---
+            const getGroupedRecurring = () => {
+                const groups = {};
+                recurring.forEach(item => {
+                    // Group by exact time and text
+                    const key = `${item.time}-${item.endTime}-${item.text}`;
+                    if (!groups[key]) {
+                        groups[key] = {
+                            ...item,
+                            days: [], // Collect days
+                            ids: []   // Collect all IDs in this group
+                        };
+                    }
+                    if (!groups[key].days.includes(item.dayOfWeek)) {
+                        groups[key].days.push(item.dayOfWeek);
+                    }
+                    groups[key].ids.push(item.id);
+                });
+                return Object.values(groups).sort((a,b) => a.time.localeCompare(b.time));
+            };
+
+            const getDayString = (days) => {
+                const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+                return days.sort((a,b) => a - b).map(d => dayNames[d]).join(', ');
+            };
+
             // --- Actions ---
             const addTaskToPool = (text) => {
                 if (!text.trim()) return;
@@ -193,15 +219,17 @@
                 setter(current === 'AM' ? 'PM' : 'AM');
             };
 
-            const startEditRecur = (item) => {
-                setEditingRecurId(item.id);
-                const startParts = to12HourParts(item.time);
+            const startEditRecurGroup = (groupItem) => {
+                // Set editing mode with one representative item from the group
+                setEditingRecurGroupId(groupItem.id); // Use the ID of the rep item to identify the "session"
+                
+                const startParts = to12HourParts(groupItem.time);
                 setRecurStartAmPm(startParts.ampm);
                 setRecurStartH(startParts.h);
                 setRecurStartM(startParts.m);
                 
-                if (item.endTime) {
-                    const endParts = to12HourParts(item.endTime);
+                if (groupItem.endTime) {
+                    const endParts = to12HourParts(groupItem.endTime);
                     setRecurEndAmPm(endParts.ampm);
                     setRecurEndH(endParts.h);
                     setRecurEndM(endParts.m);
@@ -210,55 +238,82 @@
                     setRecurEndH((parseInt(startParts.h)+1).toString());
                     setRecurEndM("00");
                 }
-                setRecurText(item.text);
-                setRecurDays([item.dayOfWeek]); 
+                setRecurText(groupItem.text);
+                setRecurDays([...groupItem.days]); // Load all days from the group
             };
 
             const cancelEditRecur = () => {
-                setEditingRecurId(null);
+                setEditingRecurGroupId(null);
                 setRecurText("");
                 setRecurDays([]);
                 setRecurStartAmPm("PM");
-                setRecurStartH("2");
-                setRecurStartM("00");
+                setRecurStartH("");
+                setRecurStartM("");
                 setRecurEndAmPm("PM");
-                setRecurEndH("3");
-                setRecurEndM("00");
+                setRecurEndH("");
+                setRecurEndM("");
             };
 
             const saveRecurringSchedule = () => {
-                if (!recurText || recurDays.length === 0) return;
+                if (!recurText || recurDays.length === 0 || !recurStartH || !recurEndH) {
+                    alert("시간과 내용, 요일을 모두 입력해주세요.");
+                    return;
+                }
+
                 const timeStr = to24Hour(recurStartAmPm, recurStartH, recurStartM);
                 const endTimeStr = to24Hour(recurEndAmPm, recurEndH, recurEndM);
 
-                if (editingRecurId) {
-                    const newItems = recurDays.map(day => ({
-                        id: Date.now() + Math.random(),
-                        dayOfWeek: day,
-                        time: timeStr,
-                        endTime: endTimeStr,
-                        text: recurText
-                    }));
-                    const filtered = recurring.filter(r => r.id !== editingRecurId);
-                    setRecurring([...filtered, ...newItems]);
-                    cancelEditRecur();
+                // Create new items for all selected days
+                const newItems = recurDays.map(day => ({
+                    id: Date.now() + Math.random(),
+                    dayOfWeek: day,
+                    time: timeStr,
+                    endTime: endTimeStr,
+                    text: recurText
+                }));
+
+                if (editingRecurGroupId) {
+                    // Find the group being edited by finding items with same time/text as the original representative
+                    // Actually, simpler approach: 
+                    // We need to remove the *old* group.
+                    // The old group is identified by the matching properties of the item `editingRecurGroupId` pointed to.
+                    // But since we didn't store the old group key, we can find the item by ID, get its properties, and remove all matches.
+                    // HOWEVER, a robust way is: When starting edit, we grabbed properties.
+                    // But if user changed properties, we can't find old ones?
+                    // Strategy: We will delete the *specific IDs* that were in the group we clicked "Edit" on.
+                    // We need to pass those IDs to this function or store them.
+                    
+                    // Let's re-find the group using the stored ID (it's one of them)
+                    const oldRepItem = recurring.find(r => r.id === editingRecurGroupId);
+                    if (oldRepItem) {
+                        // Find all items that belonged to this group (same time, text, endTime)
+                        // This assumes user didn't have duplicate identical rules.
+                        const oldGroupItems = recurring.filter(r => 
+                            r.time === oldRepItem.time && 
+                            r.endTime === oldRepItem.endTime && 
+                            r.text === oldRepItem.text
+                        );
+                        const oldIds = oldGroupItems.map(r => r.id);
+                        
+                        // Remove old items
+                        const filtered = recurring.filter(r => !oldIds.includes(r.id));
+                        setRecurring([...filtered, ...newItems]);
+                    } else {
+                        // Fallback (shouldn't happen)
+                        setRecurring([...recurring, ...newItems]);
+                    }
                 } else {
-                    const newItems = recurDays.map(day => ({
-                        id: Date.now() + Math.random(), 
-                        dayOfWeek: day,
-                        time: timeStr,
-                        endTime: endTimeStr,
-                        text: recurText
-                    }));
+                    // Add Mode
                     setRecurring([...recurring, ...newItems]);
-                    setRecurText("");
-                    setRecurDays([]);
                 }
+                cancelEditRecur();
             };
 
-            const deleteRecurringItem = (id) => {
-                if (editingRecurId === id) cancelEditRecur();
-                setRecurring(recurring.filter(r => r.id !== id));
+            const deleteRecurringGroup = (groupItem) => {
+                // Delete all items in this group (identified by ids array we built in grouping)
+                if (confirm(`${groupItem.text} (${getDayString(groupItem.days)}) 일정을 삭제하시겠습니까?`)) {
+                    setRecurring(recurring.filter(r => !groupItem.ids.includes(r.id)));
+                }
             };
 
             const openAddModal = () => {
@@ -387,7 +442,6 @@
                             오늘의 계획
                         </h1>
                     </div>
-                    {/* Share button removed */}
                 </header>
 
                 {/* Main Content */}
@@ -459,8 +513,8 @@
                                                     : 'bg-white'
                                         } border-b border-gray-50 last:border-0`}
                                     >
-                                        {/* Time - Left Aligned */}
-                                        <div className={`text-xs sm:text-sm font-bold whitespace-nowrap w-28 flex-shrink-0 text-left ${item.completed ? 'text-gray-300' : 'text-blue-500'}`}>
+                                        {/* Time - Auto width, No Wrap */}
+                                        <div className={`text-xs font-bold whitespace-nowrap w-auto flex-shrink-0 text-left ${item.completed ? 'text-gray-300' : 'text-blue-500'}`}>
                                             {getDisplayTime(item)}
                                         </div>
 
@@ -525,12 +579,13 @@
                                 
                                 {/* Section 1: Recurring Schedules */}
                                 <section>
+                                    {/* Icon Changed to CheckSquare */}
                                     <h4 className="flex items-center gap-2 font-bold text-blue-700 mb-3 text-base">
-                                        <Repeat className="w-4 h-4" />
-                                        {editingRecurId ? '고정 스케줄 수정' : '고정 스케줄 추가'}
+                                        <CheckSquare className="w-4 h-4" />
+                                        {editingRecurGroupId ? '고정 스케줄 수정' : '고정 스케줄 추가'}
                                     </h4>
                                     
-                                    <div className={`p-4 rounded-xl mb-4 border transition-colors ${editingRecurId ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-100'}`}>
+                                    <div className={`p-4 rounded-xl mb-4 border transition-colors ${editingRecurGroupId ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-100'}`}>
                                         <div className="flex flex-col gap-3">
                                             {/* Manual Time Inputs with AM/PM Selector */}
                                             <div className="flex items-center gap-1 flex-wrap">
@@ -611,7 +666,7 @@
                                             </div>
                                             
                                             <div className="flex gap-2">
-                                                {editingRecurId && (
+                                                {editingRecurGroupId && (
                                                     <button 
                                                         onClick={cancelEditRecur}
                                                         className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-bold hover:bg-gray-300"
@@ -621,34 +676,38 @@
                                                 )}
                                                 <button 
                                                     onClick={saveRecurringSchedule}
-                                                    className={`flex-1 py-2 rounded-lg text-sm font-bold text-white transition disabled:opacity-50 ${editingRecurId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                                    className={`flex-1 py-2 rounded-lg text-sm font-bold text-white transition disabled:opacity-50 ${editingRecurGroupId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-600 hover:bg-blue-700'}`}
                                                     disabled={!recurText || recurDays.length === 0}
                                                 >
-                                                    {editingRecurId ? '수정 완료' : '고정 스케줄 추가'}
+                                                    {editingRecurGroupId ? '수정 완료' : '고정 스케줄 추가'}
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* List of Recurring Rules */}
+                                    {/* List of Recurring Rules (Grouped) */}
                                     <div className="space-y-2">
                                         {recurring.length === 0 ? (
                                             <p className="text-xs text-gray-400 text-center py-2">등록된 고정 스케줄이 없습니다.</p>
                                         ) : (
-                                            recurring.sort((a,b) => a.dayOfWeek - b.dayOfWeek || a.time.localeCompare(b.time)).map((r) => (
-                                                <div key={r.id} className={`flex justify-between items-center border p-2 rounded-lg text-sm shadow-sm ${editingRecurId === r.id ? 'bg-orange-50 border-orange-200 ring-1 ring-orange-300' : 'bg-white'}`}>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${r.dayOfWeek===0?'bg-red-100 text-red-600':r.dayOfWeek===6?'bg-blue-100 text-blue-600':'bg-gray-100 text-gray-600'}`}>
-                                                            {getDayName(r.dayOfWeek)}
-                                                        </span>
-                                                        <span className="font-bold text-gray-600 text-xs whitespace-nowrap">{getDisplayTime(r)}</span>
-                                                        <span className="truncate max-w-[80px] sm:max-w-[100px]">{r.text}</span>
+                                            // Use grouped items
+                                            getGroupedRecurring().map((groupItem, idx) => (
+                                                <div key={idx} className={`flex justify-between items-center border p-2 rounded-lg text-sm shadow-sm ${editingRecurGroupId === groupItem.id ? 'bg-orange-50 border-orange-200 ring-1 ring-orange-300' : 'bg-white'}`}>
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <div className="flex items-center gap-2">
+                                                            {/* Display grouped days */}
+                                                            <span className="text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                                                {getDayString(groupItem.days)}
+                                                            </span>
+                                                            <span className="font-bold text-gray-600 text-xs whitespace-nowrap">{getDisplayTime(groupItem)}</span>
+                                                        </div>
+                                                        <span className="truncate max-w-[200px] text-gray-800 ml-1">{groupItem.text}</span>
                                                     </div>
                                                     <div className="flex items-center gap-1">
-                                                        <button onClick={() => startEditRecur(r)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded">
+                                                        <button onClick={() => startEditRecurGroup(groupItem)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded">
                                                             <Edit2 className="w-4 h-4" />
                                                         </button>
-                                                        <button onClick={() => deleteRecurringItem(r.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
+                                                        <button onClick={() => deleteRecurringGroup(groupItem)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
                                                             <Trash2 className="w-4 h-4" />
                                                         </button>
                                                     </div>
