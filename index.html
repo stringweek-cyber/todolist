@@ -46,7 +46,6 @@
             const [editingItem, setEditingItem] = useState(null); 
 
             // Recurring Form State (Inside Menu)
-            // 초기값을 빈 문자열로 설정하여 입력 시 지울 필요 없게 함
             const [recurStartAmPm, setRecurStartAmPm] = useState("PM");
             const [recurStartH, setRecurStartH] = useState("");
             const [recurStartM, setRecurStartM] = useState("");
@@ -57,7 +56,7 @@
 
             const [recurText, setRecurText] = useState("");
             const [recurDays, setRecurDays] = useState([]); 
-            const [editingRecurGroupId, setEditingRecurGroupId] = useState(null); // ID of one item in the group being edited
+            const [editingRecurGroupId, setEditingRecurGroupId] = useState(null); 
 
             // --- Init & Persistence ---
             useEffect(() => {
@@ -173,13 +172,12 @@
             const getGroupedRecurring = () => {
                 const groups = {};
                 recurring.forEach(item => {
-                    // Group by exact time and text
                     const key = `${item.time}-${item.endTime}-${item.text}`;
                     if (!groups[key]) {
                         groups[key] = {
                             ...item,
-                            days: [], // Collect days
-                            ids: []   // Collect all IDs in this group
+                            days: [], 
+                            ids: []   
                         };
                     }
                     if (!groups[key].days.includes(item.dayOfWeek)) {
@@ -220,8 +218,7 @@
             };
 
             const startEditRecurGroup = (groupItem) => {
-                // Set editing mode with one representative item from the group
-                setEditingRecurGroupId(groupItem.id); // Use the ID of the rep item to identify the "session"
+                setEditingRecurGroupId(groupItem.id); 
                 
                 const startParts = to12HourParts(groupItem.time);
                 setRecurStartAmPm(startParts.ampm);
@@ -239,7 +236,7 @@
                     setRecurEndM("00");
                 }
                 setRecurText(groupItem.text);
-                setRecurDays([...groupItem.days]); // Load all days from the group
+                setRecurDays([...groupItem.days]); 
             };
 
             const cancelEditRecur = () => {
@@ -263,7 +260,6 @@
                 const timeStr = to24Hour(recurStartAmPm, recurStartH, recurStartM);
                 const endTimeStr = to24Hour(recurEndAmPm, recurEndH, recurEndM);
 
-                // Create new items for all selected days
                 const newItems = recurDays.map(day => ({
                     id: Date.now() + Math.random(),
                     dayOfWeek: day,
@@ -273,21 +269,8 @@
                 }));
 
                 if (editingRecurGroupId) {
-                    // Find the group being edited by finding items with same time/text as the original representative
-                    // Actually, simpler approach: 
-                    // We need to remove the *old* group.
-                    // The old group is identified by the matching properties of the item `editingRecurGroupId` pointed to.
-                    // But since we didn't store the old group key, we can find the item by ID, get its properties, and remove all matches.
-                    // HOWEVER, a robust way is: When starting edit, we grabbed properties.
-                    // But if user changed properties, we can't find old ones?
-                    // Strategy: We will delete the *specific IDs* that were in the group we clicked "Edit" on.
-                    // We need to pass those IDs to this function or store them.
-                    
-                    // Let's re-find the group using the stored ID (it's one of them)
                     const oldRepItem = recurring.find(r => r.id === editingRecurGroupId);
                     if (oldRepItem) {
-                        // Find all items that belonged to this group (same time, text, endTime)
-                        // This assumes user didn't have duplicate identical rules.
                         const oldGroupItems = recurring.filter(r => 
                             r.time === oldRepItem.time && 
                             r.endTime === oldRepItem.endTime && 
@@ -295,22 +278,18 @@
                         );
                         const oldIds = oldGroupItems.map(r => r.id);
                         
-                        // Remove old items
                         const filtered = recurring.filter(r => !oldIds.includes(r.id));
                         setRecurring([...filtered, ...newItems]);
                     } else {
-                        // Fallback (shouldn't happen)
                         setRecurring([...recurring, ...newItems]);
                     }
                 } else {
-                    // Add Mode
                     setRecurring([...recurring, ...newItems]);
                 }
                 cancelEditRecur();
             };
 
             const deleteRecurringGroup = (groupItem) => {
-                // Delete all items in this group (identified by ids array we built in grouping)
                 if (confirm(`${groupItem.text} (${getDayString(groupItem.days)}) 일정을 삭제하시겠습니까?`)) {
                     setRecurring(recurring.filter(r => !groupItem.ids.includes(r.id)));
                 }
@@ -447,9 +426,9 @@
                 {/* Main Content */}
                 <main className="flex-1 max-w-lg w-full mx-auto p-4 flex flex-col gap-4">
                     
-                    {/* Weekly Calendar */}
-                    <div className="bg-white rounded-2xl shadow-sm p-4 overflow-x-auto">
-                        <div className="flex justify-between min-w-max gap-2">
+                    {/* Weekly Calendar - Grid Layout to Fix Mobile Scroll */}
+                    <div className="bg-white rounded-2xl shadow-sm p-4">
+                        <div className="grid grid-cols-7 gap-1">
                             {weekDays.map((date, idx) => {
                                 const isSelected = formatDateKey(date) === dateKey;
                                 const isToday = formatDateKey(date) === formatDateKey(new Date());
@@ -462,14 +441,14 @@
                                     <button
                                         key={idx}
                                         onClick={() => setCurrentDate(date)}
-                                        className={`flex flex-col items-center justify-center w-12 h-16 rounded-xl transition-all ${
+                                        className={`flex flex-col items-center justify-center w-full h-16 rounded-xl transition-all ${
                                             isSelected 
-                                                ? 'bg-blue-600 shadow-md scale-105' 
+                                                ? 'bg-blue-600 shadow-md z-10' 
                                                 : 'bg-gray-50 hover:bg-gray-100'
                                         } ${isToday && !isSelected ? 'border-2 border-blue-200' : ''}`}
                                     >
                                         <span className={`text-xs font-medium ${isSelected ? 'text-blue-200' : colorClass}`}>{dName}</span>
-                                        <span className={`text-lg font-bold ${isSelected ? 'text-white' : colorClass}`}>{dNum}</span>
+                                        <span className={`text-2xl font-bold ${isSelected ? 'text-white' : colorClass}`}>{dNum}</span>
                                     </button>
                                 )
                             })}
@@ -579,7 +558,6 @@
                                 
                                 {/* Section 1: Recurring Schedules */}
                                 <section>
-                                    {/* Icon Changed to CheckSquare */}
                                     <h4 className="flex items-center gap-2 font-bold text-blue-700 mb-3 text-base">
                                         <CheckSquare className="w-4 h-4" />
                                         {editingRecurGroupId ? '고정 스케줄 수정' : '고정 스케줄 추가'}
@@ -687,9 +665,7 @@
 
                                     {/* List of Recurring Rules (Grouped) */}
                                     <div className="space-y-2">
-                                        {recurring.length === 0 ? (
-                                            <p className="text-xs text-gray-400 text-center py-2">등록된 고정 스케줄이 없습니다.</p>
-                                        ) : (
+                                        {recurring.length > 0 && (
                                             // Use grouped items
                                             getGroupedRecurring().map((groupItem, idx) => (
                                                 <div key={idx} className={`flex justify-between items-center border p-2 rounded-lg text-sm shadow-sm ${editingRecurGroupId === groupItem.id ? 'bg-orange-50 border-orange-200 ring-1 ring-orange-300' : 'bg-white'}`}>
@@ -758,7 +734,7 @@
                                                 </button>
                                             </span>
                                         ))}
-                                        {tasks.length === 0 && <p className="text-xs text-gray-400">저장된 할 일이 없습니다.</p>}
+                                        
                                     </div>
                                 </section>
 
