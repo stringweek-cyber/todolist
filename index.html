@@ -26,31 +26,16 @@
 
     <!-- 리액트 코드 -->
     <script type="text/babel" data-type="module">
-        import React, { useState, useEffect, useRef } from 'react';
+        import React, { useState, useEffect } from 'react';
         import { createRoot } from 'react-dom/client';
-        import { Calendar, Plus, Trash2, Share2, Repeat, Menu, X, Edit2, CheckSquare } from 'lucide-react';
-
-        // html2canvas library helper
-        const loadScript = (src) => {
-            return new Promise((resolve, reject) => {
-                if (document.querySelector(`script[src="${src}"]`)) {
-                    resolve();
-                    return;
-                }
-                const script = document.createElement('script');
-                script.src = src;
-                script.onload = resolve;
-                script.onerror = reject;
-                document.head.appendChild(script);
-            });
-        };
+        import { Calendar, Plus, Trash2, Repeat, Menu, X, Edit2, CheckSquare } from 'lucide-react';
 
         const TodaysPlan = () => {
             // --- State ---
             const [currentDate, setCurrentDate] = useState(new Date());
             const [tasks, setTasks] = useState([]); 
             const [schedules, setSchedules] = useState({}); 
-            const [recurring, setRecurring] = useState([]); // [{ id, dayOfWeek, time, text, endTime }]
+            const [recurring, setRecurring] = useState([]); 
             
             const [isMenuOpen, setIsMenuOpen] = useState(false); 
             const [isAddScheduleOpen, setIsAddScheduleOpen] = useState(false);
@@ -60,7 +45,7 @@
             const [selectedTaskText, setSelectedTaskText] = useState("");
             const [editingItem, setEditingItem] = useState(null); 
 
-            // Recurring Form State (Inside Menu) - Manual Input
+            // Recurring Form State (Inside Menu)
             const [recurStartAmPm, setRecurStartAmPm] = useState("PM");
             const [recurStartH, setRecurStartH] = useState("2");
             const [recurStartM, setRecurStartM] = useState("00");
@@ -73,12 +58,8 @@
             const [recurDays, setRecurDays] = useState([]); 
             const [editingRecurId, setEditingRecurId] = useState(null); 
 
-            const captureRef = useRef(null);
-
             // --- Init & Persistence ---
             useEffect(() => {
-                loadScript("https://html2canvas.hertzen.com/dist/html2canvas.min.js");
-                
                 const savedTasks = JSON.parse(localStorage.getItem('my_tasks') || '[]');
                 const savedSchedules = JSON.parse(localStorage.getItem('my_schedules') || '{}');
                 const savedRecurring = JSON.parse(localStorage.getItem('my_recurring') || '[]');
@@ -103,7 +84,6 @@
                 return { ampm, h12 };
             };
 
-            // Convert 12h inputs to 24h string for storage "HH:MM"
             const to24Hour = (ampm, h, m) => {
                 let hour = parseInt(h, 10);
                 if (ampm === 'PM' && hour < 12) hour += 12;
@@ -111,7 +91,6 @@
                 return `${hour < 10 ? '0'+hour : hour}:${m}`;
             };
 
-            // Convert 24h string "HH:MM" to 12h parts for editing
             const to12HourParts = (timeStr) => {
                 const [hStr, mStr] = timeStr.split(':');
                 const h = parseInt(hStr, 10);
@@ -121,28 +100,22 @@
                 return { ampm, h: h12.toString(), m: mStr };
             };
 
-            // 1시간 단위 시간 슬롯 생성 (9시 ~ 23시) - 형식 변경: AM 9시 - 10시
             const generateTimeSlots = () => {
                 const slots = [];
                 for (let i = 9; i <= 23; i++) {
                 const value = `${i < 10 ? '0' + i : i}:00`;
-                
                 const start = formatAmPm(i);
                 const nextHRaw = i + 1;
                 const next = formatAmPm(nextHRaw > 23 ? 0 : nextHRaw); 
-                
                 const label = `${start.ampm} ${start.h12}시 - ${next.h12}시`;
-                
                 slots.push({ value, label });
                 }
                 return slots;
             };
             
-            // 리스트 표시용 시간 포맷터
             const getDisplayTime = (item) => {
                 if (!item.time) return "";
                 
-                // 고정 스케줄 등에서 endTime이 지정된 경우 (수기 입력)
                 if (item.endTime) {
                     const [sh, sm] = item.time.split(':').map(Number);
                     const [eh, em] = item.endTime.split(':').map(Number);
@@ -162,7 +135,6 @@
                     return `${sLabel} - ${eLabel}`;
                 }
 
-                // 일반 일정 (1시간 단위)
                 const [h] = item.time.split(':').map(Number);
                 const start = formatAmPm(h);
                 const nextHRaw = h + 1;
@@ -198,8 +170,6 @@
             const getDayName = (dayIndex) => ['일','월','화','수','목','금','토'][dayIndex];
 
             // --- Actions ---
-            
-            // 1. Task Pool Actions
             const addTaskToPool = (text) => {
                 if (!text.trim()) return;
                 if (!tasks.includes(text)) {
@@ -211,7 +181,6 @@
                 setTasks(tasks.filter(t => t !== task));
             };
 
-            // 2. Recurring Schedule Actions
             const toggleRecurDay = (dayIndex) => {
                 if (recurDays.includes(dayIndex)) {
                     setRecurDays(recurDays.filter(d => d !== dayIndex));
@@ -226,7 +195,6 @@
 
             const startEditRecur = (item) => {
                 setEditingRecurId(item.id);
-                
                 const startParts = to12HourParts(item.time);
                 setRecurStartAmPm(startParts.ampm);
                 setRecurStartH(startParts.h);
@@ -238,12 +206,10 @@
                     setRecurEndH(endParts.h);
                     setRecurEndM(endParts.m);
                 } else {
-                    // Fallback logic
                     setRecurEndAmPm(startParts.ampm);
                     setRecurEndH((parseInt(startParts.h)+1).toString());
                     setRecurEndM("00");
                 }
-
                 setRecurText(item.text);
                 setRecurDays([item.dayOfWeek]); 
             };
@@ -252,11 +218,9 @@
                 setEditingRecurId(null);
                 setRecurText("");
                 setRecurDays([]);
-                
                 setRecurStartAmPm("PM");
                 setRecurStartH("2");
                 setRecurStartM("00");
-                
                 setRecurEndAmPm("PM");
                 setRecurEndH("3");
                 setRecurEndM("00");
@@ -264,9 +228,6 @@
 
             const saveRecurringSchedule = () => {
                 if (!recurText || recurDays.length === 0) return;
-                
-                // Pad single digits for minute (Hour doesn't matter for storage, but clean)
-                // Store as 24h format for consistent sorting
                 const timeStr = to24Hour(recurStartAmPm, recurStartH, recurStartM);
                 const endTimeStr = to24Hour(recurEndAmPm, recurEndH, recurEndM);
 
@@ -278,7 +239,6 @@
                         endTime: endTimeStr,
                         text: recurText
                     }));
-                    
                     const filtered = recurring.filter(r => r.id !== editingRecurId);
                     setRecurring([...filtered, ...newItems]);
                     cancelEditRecur();
@@ -301,7 +261,6 @@
                 setRecurring(recurring.filter(r => r.id !== id));
             };
 
-            // 3. Daily Schedule Actions
             const openAddModal = () => {
                 setEditingItem(null);
                 setSelectedTime("09:00");
@@ -318,9 +277,7 @@
 
             const saveSchedule = () => {
                 if (!selectedTaskText) return;
-
                 if (editingItem) {
-                    // Edit Mode
                     if (editingItem.isRecurring && !editingItem.recurringOriginId) {
                         const dateKey = formatDateKey(currentDate);
                         const currentDaySchedules = schedules[dateKey] || [];
@@ -339,7 +296,6 @@
                         setSchedules({ ...schedules, [dateKey]: updated });
                     }
                 } else {
-                    // Add Mode
                     const newEntry = {
                         id: Date.now(),
                         time: selectedTime,
@@ -353,7 +309,6 @@
                         [dateKey]: [...currentDaySchedules, newEntry]
                     });
                 }
-                
                 setIsAddScheduleOpen(false);
                 setSelectedTaskText("");
                 setEditingItem(null);
@@ -394,40 +349,6 @@
                 }
             };
 
-            const handleShare = async () => {
-                if (!captureRef.current || !window.html2canvas) {
-                    alert("캡쳐 도구를 준비 중입니다. 잠시 후 다시 시도해주세요.");
-                    return;
-                }
-                try {
-                    const canvas = await window.html2canvas(captureRef.current, {
-                        backgroundColor: "#ffffff",
-                        scale: 2
-                    });
-                    canvas.toBlob(async (blob) => {
-                        if (!blob) return;
-                        const file = new File([blob], `오늘의계획_${formatDateKey(currentDate)}.png`, { type: "image/png" });
-                        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                            try {
-                                await navigator.share({
-                                    files: [file],
-                                    title: '오늘의 계획',
-                                    text: `${formatDateKey(currentDate)} 일정표입니다.`
-                                });
-                            } catch (e) { if (e.name !== 'AbortError') console.error(e); }
-                        } else {
-                            const link = document.createElement('a');
-                            link.download = file.name;
-                            link.href = canvas.toDataURL();
-                            link.click();
-                        }
-                    });
-                } catch (err) {
-                    console.error("Capture failed", err);
-                    alert("이미지 저장에 실패했습니다.");
-                }
-            };
-
             // --- Render Logic ---
             const weekDays = getWeekDays(currentDate);
             const dateKey = formatDateKey(currentDate);
@@ -447,7 +368,6 @@
                 displayItems.push({ ...c, isRecurring: !!c.recurringOriginId });
             });
 
-            // Sort by Time (HH:MM string comparison works for 24h format)
             displayItems.sort((a, b) => a.time.localeCompare(b.time));
 
             return (
@@ -458,22 +378,16 @@
                     <div className="flex items-center gap-2">
                         <button 
                             onClick={() => setIsMenuOpen(true)}
-                            className="p-2 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 transition"
+                            className="p-2 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition"
                             title="설정 및 할일 관리"
                         >
                             <Menu className="w-5 h-5" />
                         </button>
-                        <h1 className="text-xl font-bold text-indigo-600 flex items-center gap-1">
+                        <h1 className="text-xl font-bold text-blue-600 flex items-center gap-1">
                             오늘의 계획
                         </h1>
                     </div>
-                    <button 
-                        onClick={handleShare}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition"
-                        title="공유하기"
-                    >
-                        <Share2 className="w-5 h-5" />
-                    </button>
+                    {/* Share button removed */}
                 </header>
 
                 {/* Main Content */}
@@ -496,11 +410,11 @@
                                         onClick={() => setCurrentDate(date)}
                                         className={`flex flex-col items-center justify-center w-12 h-16 rounded-xl transition-all ${
                                             isSelected 
-                                                ? 'bg-indigo-600 shadow-md scale-105' 
+                                                ? 'bg-blue-600 shadow-md scale-105' 
                                                 : 'bg-gray-50 hover:bg-gray-100'
-                                        } ${isToday && !isSelected ? 'border-2 border-indigo-200' : ''}`}
+                                        } ${isToday && !isSelected ? 'border-2 border-blue-200' : ''}`}
                                     >
-                                        <span className={`text-xs font-medium ${isSelected ? 'text-indigo-200' : colorClass}`}>{dName}</span>
+                                        <span className={`text-xs font-medium ${isSelected ? 'text-blue-200' : colorClass}`}>{dName}</span>
                                         <span className={`text-lg font-bold ${isSelected ? 'text-white' : colorClass}`}>{dNum}</span>
                                     </button>
                                 )
@@ -509,10 +423,10 @@
                     </div>
 
                     {/* Schedule List */}
-                    <div className="bg-white rounded-2xl shadow-sm min-h-[400px] flex flex-col relative" ref={captureRef}>
+                    <div className="bg-white rounded-2xl shadow-sm min-h-[400px] flex flex-col relative">
                         <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white rounded-t-2xl">
                             <h2 className="text-lg font-bold flex items-center gap-2">
-                                <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded text-sm">
+                                <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded text-sm">
                                     {currentDate.getMonth()+1}월 {currentDate.getDate()}일
                                 </span>
                                 계획표
@@ -541,12 +455,12 @@
                                             item.completed 
                                                 ? 'bg-white opacity-50' 
                                                 : item.isRecurring && !item.recurringOriginId 
-                                                    ? 'bg-purple-50' // Colored background for recurring items
+                                                    ? 'bg-purple-50' 
                                                     : 'bg-white'
                                         } border-b border-gray-50 last:border-0`}
                                     >
                                         {/* Time - Left Aligned */}
-                                        <div className={`text-xs sm:text-sm font-bold whitespace-nowrap w-28 flex-shrink-0 text-left ${item.completed ? 'text-gray-300' : 'text-indigo-500'}`}>
+                                        <div className={`text-xs sm:text-sm font-bold whitespace-nowrap w-28 flex-shrink-0 text-left ${item.completed ? 'text-gray-300' : 'text-blue-500'}`}>
                                             {getDisplayTime(item)}
                                         </div>
 
@@ -557,7 +471,7 @@
                                                 {item.text}
                                             </p>
                                             {item.isRecurring && !item.recurringOriginId && (
-                                                <span className="text-[10px] text-purple-300 flex items-center gap-1 mt-0.5">
+                                                <span className="text-[10px] text-purple-300 flex items-center gap-1 mt-0.5 whitespace-nowrap">
                                                     <Repeat className="w-3 h-3" /> 매주 고정
                                                 </span>
                                             )}
@@ -566,7 +480,7 @@
                                         <div className="flex items-center gap-1">
                                             <button
                                                 onClick={() => openEditModal(item)}
-                                                className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-indigo-600 rounded-md transition"
+                                                className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-blue-600 rounded-md transition"
                                             >
                                                 <Edit2 className="w-4 h-4" />
                                             </button>
@@ -611,12 +525,12 @@
                                 
                                 {/* Section 1: Recurring Schedules */}
                                 <section>
-                                    <h4 className="flex items-center gap-2 font-bold text-indigo-700 mb-3 text-base">
+                                    <h4 className="flex items-center gap-2 font-bold text-blue-700 mb-3 text-base">
                                         <Repeat className="w-4 h-4" />
                                         {editingRecurId ? '고정 스케줄 수정' : '고정 스케줄 추가'}
                                     </h4>
                                     
-                                    <div className={`p-4 rounded-xl mb-4 border transition-colors ${editingRecurId ? 'bg-orange-50 border-orange-200' : 'bg-indigo-50 border-indigo-100'}`}>
+                                    <div className={`p-4 rounded-xl mb-4 border transition-colors ${editingRecurId ? 'bg-orange-50 border-orange-200' : 'bg-blue-50 border-blue-100'}`}>
                                         <div className="flex flex-col gap-3">
                                             {/* Manual Time Inputs with AM/PM Selector */}
                                             <div className="flex items-center gap-1 flex-wrap">
@@ -624,7 +538,7 @@
                                                 <div className="flex items-center gap-1 bg-white p-1 rounded border">
                                                     <button 
                                                         onClick={() => toggleAmPm(setRecurStartAmPm, recurStartAmPm)}
-                                                        className="px-1.5 py-0.5 text-xs font-bold bg-gray-100 rounded hover:bg-gray-200 text-indigo-600 min-w-[32px]"
+                                                        className="px-1.5 py-0.5 text-xs font-bold bg-gray-100 rounded hover:bg-gray-200 text-blue-600 min-w-[32px]"
                                                     >
                                                         {recurStartAmPm}
                                                     </button>
@@ -649,7 +563,7 @@
                                                 <div className="flex items-center gap-1 bg-white p-1 rounded border">
                                                     <button 
                                                         onClick={() => toggleAmPm(setRecurEndAmPm, recurEndAmPm)}
-                                                        className="px-1.5 py-0.5 text-xs font-bold bg-gray-100 rounded hover:bg-gray-200 text-indigo-600 min-w-[32px]"
+                                                        className="px-1.5 py-0.5 text-xs font-bold bg-gray-100 rounded hover:bg-gray-200 text-blue-600 min-w-[32px]"
                                                     >
                                                         {recurEndAmPm}
                                                     </button>
@@ -687,8 +601,8 @@
                                                         onClick={() => toggleRecurDay(i)}
                                                         className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${
                                                             recurDays.includes(i)
-                                                                ? 'bg-indigo-600 text-white shadow-md'
-                                                                : 'bg-white border text-gray-400 hover:border-indigo-300'
+                                                                ? 'bg-blue-600 text-white shadow-md'
+                                                                : 'bg-white border text-gray-400 hover:border-blue-300'
                                                         } ${i===0 ? 'text-red-300' : i===6 ? 'text-blue-300' : ''}`}
                                                     >
                                                         {d}
@@ -707,7 +621,7 @@
                                                 )}
                                                 <button 
                                                     onClick={saveRecurringSchedule}
-                                                    className={`flex-1 py-2 rounded-lg text-sm font-bold text-white transition disabled:opacity-50 ${editingRecurId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                                                    className={`flex-1 py-2 rounded-lg text-sm font-bold text-white transition disabled:opacity-50 ${editingRecurId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-600 hover:bg-blue-700'}`}
                                                     disabled={!recurText || recurDays.length === 0}
                                                 >
                                                     {editingRecurId ? '수정 완료' : '고정 스케줄 추가'}
@@ -731,7 +645,7 @@
                                                         <span className="truncate max-w-[80px] sm:max-w-[100px]">{r.text}</span>
                                                     </div>
                                                     <div className="flex items-center gap-1">
-                                                        <button onClick={() => startEditRecur(r)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">
+                                                        <button onClick={() => startEditRecur(r)} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded">
                                                             <Edit2 className="w-4 h-4" />
                                                         </button>
                                                         <button onClick={() => deleteRecurringItem(r.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
@@ -807,7 +721,7 @@
                                 <div>
                                     <label className="text-xs font-bold text-gray-500 mb-1 block">시간 선택</label>
                                     <select 
-                                        className="w-full p-3 border rounded-xl bg-white text-base font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                        className="w-full p-3 border rounded-xl bg-white text-base font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                         value={selectedTime}
                                         onChange={(e) => setSelectedTime(e.target.value)}
                                     >
@@ -827,8 +741,8 @@
                                                     onClick={() => setSelectedTaskText(task)}
                                                     className={`px-3 py-1.5 rounded-full text-sm border transition ${
                                                         selectedTaskText === task 
-                                                            ? 'bg-indigo-600 text-white border-indigo-600' 
-                                                            : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'
+                                                            ? 'bg-blue-600 text-white border-blue-600' 
+                                                            : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
                                                     }`}
                                                 >
                                                     {task}
@@ -839,7 +753,7 @@
                                     <input 
                                         type="text" 
                                         placeholder="할 일을 입력하세요..." 
-                                        className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                        className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                         value={selectedTaskText}
                                         onChange={(e) => setSelectedTaskText(e.target.value)}
                                     />
