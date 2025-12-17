@@ -1,841 +1,874 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Plus, Trash2, Share2, Repeat, Menu, X, Edit2, CheckSquare } from 'lucide-react';
-
-// html2canvas library helper
-const loadScript = (src) => {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) {
-      resolve();
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = src;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-};
-
-const TodaysPlan = () => {
-  // --- State ---
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [tasks, setTasks] = useState([]); 
-  const [schedules, setSchedules] = useState({}); 
-  const [recurring, setRecurring] = useState([]); // [{ id, dayOfWeek, time, text, endTime }]
-  
-  const [isMenuOpen, setIsMenuOpen] = useState(false); 
-  const [isAddScheduleOpen, setIsAddScheduleOpen] = useState(false);
-  
-  // Add/Edit Single Schedule Form State
-  const [selectedTime, setSelectedTime] = useState("09:00");
-  const [selectedTaskText, setSelectedTaskText] = useState("");
-  const [editingItem, setEditingItem] = useState(null); 
-
-  // Recurring Form State (Inside Menu) - Manual Input
-  const [recurStartAmPm, setRecurStartAmPm] = useState("PM");
-  const [recurStartH, setRecurStartH] = useState("2");
-  const [recurStartM, setRecurStartM] = useState("00");
-  
-  const [recurEndAmPm, setRecurEndAmPm] = useState("PM");
-  const [recurEndH, setRecurEndH] = useState("3");
-  const [recurEndM, setRecurEndM] = useState("00");
-
-  const [recurText, setRecurText] = useState("");
-  const [recurDays, setRecurDays] = useState([]); 
-  const [editingRecurId, setEditingRecurId] = useState(null); 
-
-  const captureRef = useRef(null);
-
-  // --- Init & Persistence ---
-  useEffect(() => {
-    loadScript("https://html2canvas.hertzen.com/dist/html2canvas.min.js");
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오늘의 계획</title>
     
-    const savedTasks = JSON.parse(localStorage.getItem('my_tasks') || '[]');
-    const savedSchedules = JSON.parse(localStorage.getItem('my_schedules') || '{}');
-    const savedRecurring = JSON.parse(localStorage.getItem('my_recurring') || '[]');
+    <!-- 1. Tailwind CSS (스타일링 도구) -->
+    <script src="https://cdn.tailwindcss.com"></script>
     
-    setTasks(savedTasks);
-    setSchedules(savedSchedules);
-    setRecurring(savedRecurring);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('my_tasks', JSON.stringify(tasks));
-    localStorage.setItem('my_schedules', JSON.stringify(schedules));
-    localStorage.setItem('my_recurring', JSON.stringify(recurring));
-  }, [tasks, schedules, recurring]);
-
-  // --- Helpers ---
-  
-  const formatAmPm = (hour) => {
-      const h = parseInt(hour, 10);
-      const ampm = h < 12 ? 'AM' : 'PM';
-      const h12 = h > 12 ? h - 12 : (h === 0 ? 12 : h === 12 ? 12 : h);
-      return { ampm, h12 };
-  };
-
-  // Convert 12h inputs to 24h string for storage "HH:MM"
-  const to24Hour = (ampm, h, m) => {
-      let hour = parseInt(h, 10);
-      if (ampm === 'PM' && hour < 12) hour += 12;
-      if (ampm === 'AM' && hour === 12) hour = 0;
-      return `${hour < 10 ? '0'+hour : hour}:${m}`;
-  };
-
-  // Convert 24h string "HH:MM" to 12h parts for editing
-  const to12HourParts = (timeStr) => {
-      const [hStr, mStr] = timeStr.split(':');
-      const h = parseInt(hStr, 10);
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      let h12 = h % 12;
-      if (h12 === 0) h12 = 12;
-      return { ampm, h: h12.toString(), m: mStr };
-  };
-
-  // 1시간 단위 시간 슬롯 생성 (9시 ~ 23시) - 형식 변경: AM 9시 - 10시
-  const generateTimeSlots = () => {
-    const slots = [];
-    for (let i = 9; i <= 23; i++) {
-      const value = `${i < 10 ? '0' + i : i}:00`;
-      
-      const start = formatAmPm(i);
-      const nextHRaw = i + 1;
-      const next = formatAmPm(nextHRaw > 23 ? 0 : nextHRaw); 
-      
-      const label = `${start.ampm} ${start.h12}시 - ${next.h12}시`;
-      
-      slots.push({ value, label });
-    }
-    return slots;
-  };
-  
-  // 리스트 표시용 시간 포맷터
-  const getDisplayTime = (item) => {
-    if (!item.time) return "";
-    
-    // 고정 스케줄 등에서 endTime이 지정된 경우 (수기 입력)
-    if (item.endTime) {
-        const [sh, sm] = item.time.split(':').map(Number);
-        const [eh, em] = item.endTime.split(':').map(Number);
-        
-        const start = formatAmPm(sh);
-        const end = formatAmPm(eh);
-        
-        const startStr = `${start.ampm} ${start.h12}:${sm < 10 ? '0'+sm : sm}`;
-        const endStr = `${end.ampm} ${end.h12}:${em < 10 ? '0'+em : em}`;
-        
-        const sLabel = sm === 0 ? `${start.ampm} ${start.h12}시` : startStr;
-        const eLabel = em === 0 ? `${end.h12}시` : `${end.h12}:${em < 10 ? '0'+em : em}`;
-        
-        if (start.ampm !== end.ampm) {
-             return `${sLabel} - ${end.ampm} ${eLabel}`;
-        }
-        return `${sLabel} - ${eLabel}`;
-    }
-
-    // 일반 일정 (1시간 단위)
-    const [h] = item.time.split(':').map(Number);
-    const start = formatAmPm(h);
-    const nextHRaw = h + 1;
-    const next = formatAmPm(nextHRaw > 23 ? 0 : nextHRaw);
-    
-    return `${start.ampm} ${start.h12}시 - ${next.h12}시`;
-  };
-
-  const getWeekDays = (date) => {
-    const start = new Date(date);
-    start.setDate(start.getDate() - start.getDay()); // Sunday
-    const days = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      days.push(d);
-    }
-    return days;
-  };
-
-  const formatDateKey = (date) => {
-    return date.toISOString().split('T')[0];
-  };
-
-  const getDayOfWeek = (date) => date.getDay(); 
-
-  const getDayColor = (dayIndex) => {
-      if (dayIndex === 0) return 'text-red-500'; // Sunday
-      if (dayIndex === 6) return 'text-blue-500'; // Saturday
-      return 'text-gray-500';
-  };
-
-  const getDayName = (dayIndex) => ['일','월','화','수','목','금','토'][dayIndex];
-
-  // --- Actions ---
-  
-  // 1. Task Pool Actions
-  const addTaskToPool = (text) => {
-    if (!text.trim()) return;
-    if (!tasks.includes(text)) {
-      setTasks([...tasks, text]);
-    }
-  };
-
-  const removeTaskFromPool = (task) => {
-    setTasks(tasks.filter(t => t !== task));
-  };
-
-  // 2. Recurring Schedule Actions
-  const toggleRecurDay = (dayIndex) => {
-      if (recurDays.includes(dayIndex)) {
-          setRecurDays(recurDays.filter(d => d !== dayIndex));
-      } else {
-          setRecurDays([...recurDays, dayIndex].sort());
-      }
-  };
-
-  const toggleAmPm = (setter, current) => {
-      setter(current === 'AM' ? 'PM' : 'AM');
-  };
-
-  const startEditRecur = (item) => {
-      setEditingRecurId(item.id);
-      
-      const startParts = to12HourParts(item.time);
-      setRecurStartAmPm(startParts.ampm);
-      setRecurStartH(startParts.h);
-      setRecurStartM(startParts.m);
-      
-      if (item.endTime) {
-        const endParts = to12HourParts(item.endTime);
-        setRecurEndAmPm(endParts.ampm);
-        setRecurEndH(endParts.h);
-        setRecurEndM(endParts.m);
-      } else {
-          // Fallback logic
-          setRecurEndAmPm(startParts.ampm);
-          setRecurEndH((parseInt(startParts.h)+1).toString());
-          setRecurEndM("00");
-      }
-
-      setRecurText(item.text);
-      setRecurDays([item.dayOfWeek]); 
-  };
-
-  const cancelEditRecur = () => {
-      setEditingRecurId(null);
-      setRecurText("");
-      setRecurDays([]);
-      
-      setRecurStartAmPm("PM");
-      setRecurStartH("2");
-      setRecurStartM("00");
-      
-      setRecurEndAmPm("PM");
-      setRecurEndH("3");
-      setRecurEndM("00");
-  };
-
-  const saveRecurringSchedule = () => {
-      if (!recurText || recurDays.length === 0) return;
-      
-      // Pad single digits for minute (Hour doesn't matter for storage, but clean)
-      // Store as 24h format for consistent sorting
-      const timeStr = to24Hour(recurStartAmPm, recurStartH, recurStartM);
-      const endTimeStr = to24Hour(recurEndAmPm, recurEndH, recurEndM);
-
-      if (editingRecurId) {
-          const newItems = recurDays.map(day => ({
-              id: Date.now() + Math.random(),
-              dayOfWeek: day,
-              time: timeStr,
-              endTime: endTimeStr,
-              text: recurText
-          }));
-          
-          const filtered = recurring.filter(r => r.id !== editingRecurId);
-          setRecurring([...filtered, ...newItems]);
-          cancelEditRecur();
-      } else {
-          const newItems = recurDays.map(day => ({
-              id: Date.now() + Math.random(), 
-              dayOfWeek: day,
-              time: timeStr,
-              endTime: endTimeStr,
-              text: recurText
-          }));
-          setRecurring([...recurring, ...newItems]);
-          setRecurText("");
-          setRecurDays([]);
-      }
-  };
-
-  const deleteRecurringItem = (id) => {
-      if (editingRecurId === id) cancelEditRecur();
-      setRecurring(recurring.filter(r => r.id !== id));
-  };
-
-  // 3. Daily Schedule Actions
-  const openAddModal = () => {
-    setEditingItem(null);
-    setSelectedTime("09:00");
-    setSelectedTaskText("");
-    setIsAddScheduleOpen(true);
-  };
-
-  const openEditModal = (item) => {
-    setEditingItem(item);
-    setSelectedTime(item.time);
-    setSelectedTaskText(item.text);
-    setIsAddScheduleOpen(true);
-  };
-
-  const saveSchedule = () => {
-    if (!selectedTaskText) return;
-
-    if (editingItem) {
-        // Edit Mode
-        if (editingItem.isRecurring && !editingItem.recurringOriginId) {
-             const dateKey = formatDateKey(currentDate);
-             const currentDaySchedules = schedules[dateKey] || [];
-             const newConcrete = {
-                id: Date.now(),
-                time: selectedTime,
-                text: selectedTaskText,
-                completed: false,
-                recurringOriginId: editingItem.id 
-             };
-             setSchedules({ ...schedules, [dateKey]: [...currentDaySchedules, newConcrete] });
-        } else {
-            const dateKey = formatDateKey(currentDate);
-            const currentDaySchedules = schedules[dateKey] || [];
-            const updated = currentDaySchedules.map(s => s.id === editingItem.id ? { ...s, time: selectedTime, text: selectedTaskText } : s);
-            setSchedules({ ...schedules, [dateKey]: updated });
-        }
-    } else {
-        // Add Mode
-        const newEntry = {
-            id: Date.now(),
-            time: selectedTime,
-            text: selectedTaskText,
-            completed: false
-        };
-        const dateKey = formatDateKey(currentDate);
-        const currentDaySchedules = schedules[dateKey] || [];
-        setSchedules({
-            ...schedules,
-            [dateKey]: [...currentDaySchedules, newEntry]
-        });
-    }
-    
-    setIsAddScheduleOpen(false);
-    setSelectedTaskText("");
-    setEditingItem(null);
-  };
-
-  const toggleComplete = (entry, isVirtualRecurring, dateKey) => {
-    if (isVirtualRecurring) {
-        const currentDaySchedules = schedules[dateKey] || [];
-        const newConcrete = {
-            ...entry,
-            id: Date.now(),
-            recurringOriginId: entry.id,
-            completed: true
-        };
-        setSchedules({ ...schedules, [dateKey]: [...currentDaySchedules, newConcrete] });
-    } else {
-        const currentDaySchedules = schedules[dateKey] || [];
-        const updated = currentDaySchedules.map(s => 
-            s.id === entry.id ? { ...s, completed: !s.completed } : s
-        );
-        setSchedules({ ...schedules, [dateKey]: updated });
-    }
-  };
-
-  const deleteSchedule = (id, isVirtualRecurring, dateKey) => {
-    if (isVirtualRecurring) {
-        if(window.confirm('이 반복 일정을 이번 주 오늘만 삭제하시겠습니까?\n(영구 삭제는 우측 상단 메뉴 > 고정 스케줄 관리에서 가능합니다)')) {
-             alert("반복 일정의 영구 삭제는 우측 상단 메뉴(≡)의 '고정 스케줄' 탭에서 할 수 있습니다.");
-        }
-    } else {
-        if(window.confirm('이 일정을 삭제하시겠습니까?')) {
-            const currentDaySchedules = schedules[dateKey] || [];
-            setSchedules({
-                ...schedules,
-                [dateKey]: currentDaySchedules.filter(s => s.id !== id)
-            });
-        }
-    }
-  };
-
-  const handleShare = async () => {
-    if (!captureRef.current || !window.html2canvas) {
-        alert("캡쳐 도구를 준비 중입니다. 잠시 후 다시 시도해주세요.");
-        return;
-    }
-    try {
-        const canvas = await window.html2canvas(captureRef.current, {
-            backgroundColor: "#ffffff",
-            scale: 2
-        });
-        canvas.toBlob(async (blob) => {
-            if (!blob) return;
-            const file = new File([blob], `오늘의계획_${formatDateKey(currentDate)}.png`, { type: "image/png" });
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                try {
-                    await navigator.share({
-                        files: [file],
-                        title: '오늘의 계획',
-                        text: `${formatDateKey(currentDate)} 일정표입니다.`
-                    });
-                } catch (e) { if (e.name !== 'AbortError') console.error(e); }
-            } else {
-                const link = document.createElement('a');
-                link.download = file.name;
-                link.href = canvas.toDataURL();
-                link.click();
+    <!-- 2. React & ReactDOM & Babel (리액트 실행 도구) -->
+    <script type="importmap">
+        {
+            "imports": {
+                "react": "https://esm.sh/react@18.2.0",
+                "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+                "lucide-react": "https://esm.sh/lucide-react@0.292.0"
             }
-        });
-    } catch (err) {
-        console.error("Capture failed", err);
-        alert("이미지 저장에 실패했습니다.");
-    }
-  };
+        }
+    </script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <!-- 리액트 앱이 그려질 공간 -->
+    <div id="root"></div>
 
-  // --- Render Logic ---
-  const weekDays = getWeekDays(currentDate);
-  const dateKey = formatDateKey(currentDate);
-  const dayOfWeek = getDayOfWeek(currentDate);
+    <!-- 리액트 코드 -->
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { Calendar, Plus, Trash2, Share2, Repeat, Menu, X, Edit2, CheckSquare } from 'lucide-react';
 
-  const todaysRecurring = recurring.filter(r => r.dayOfWeek === dayOfWeek);
-  const todaysConcrete = schedules[dateKey] || [];
-  const displayItems = [];
+        // html2canvas library helper
+        const loadScript = (src) => {
+            return new Promise((resolve, reject) => {
+                if (document.querySelector(`script[src="${src}"]`)) {
+                    resolve();
+                    return;
+                }
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        };
 
-  todaysRecurring.forEach(r => {
-     const override = todaysConcrete.find(c => c.recurringOriginId === r.id);
-     if (!override) {
-         displayItems.push({ ...r, isRecurring: true });
-     }
-  });
-  todaysConcrete.forEach(c => {
-      displayItems.push({ ...c, isRecurring: !!c.recurringOriginId });
-  });
-
-  // Sort by Time (HH:MM string comparison works for 24h format)
-  displayItems.sort((a, b) => a.time.localeCompare(b.time));
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-800">
-      
-      {/* Header */}
-      <header className="bg-white px-4 py-4 shadow-sm flex justify-between items-center sticky top-0 z-10">
-        <div className="flex items-center gap-2">
-             <button 
-                onClick={() => setIsMenuOpen(true)}
-                className="p-2 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 transition"
-                title="설정 및 할일 관리"
-            >
-                <Menu className="w-5 h-5" />
-            </button>
-            <h1 className="text-xl font-bold text-indigo-600 flex items-center gap-1">
-                오늘의 계획
-            </h1>
-        </div>
-        <button 
-            onClick={handleShare}
-            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition"
-            title="공유하기"
-        >
-            <Share2 className="w-5 h-5" />
-        </button>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 max-w-lg w-full mx-auto p-4 flex flex-col gap-4">
-        
-        {/* Weekly Calendar */}
-        <div className="bg-white rounded-2xl shadow-sm p-4 overflow-x-auto">
-            <div className="flex justify-between min-w-max gap-2">
-                {weekDays.map((date, idx) => {
-                    const isSelected = formatDateKey(date) === dateKey;
-                    const isToday = formatDateKey(date) === formatDateKey(new Date());
-                    const dNum = date.getDate();
-                    const dIdx = date.getDay();
-                    const dName = getDayName(dIdx);
-                    const colorClass = getDayColor(dIdx);
-                    
-                    return (
-                        <button
-                            key={idx}
-                            onClick={() => setCurrentDate(date)}
-                            className={`flex flex-col items-center justify-center w-12 h-16 rounded-xl transition-all ${
-                                isSelected 
-                                    ? 'bg-indigo-600 shadow-md scale-105' 
-                                    : 'bg-gray-50 hover:bg-gray-100'
-                            } ${isToday && !isSelected ? 'border-2 border-indigo-200' : ''}`}
-                        >
-                            <span className={`text-xs font-medium ${isSelected ? 'text-indigo-200' : colorClass}`}>{dName}</span>
-                            <span className={`text-lg font-bold ${isSelected ? 'text-white' : colorClass}`}>{dNum}</span>
-                        </button>
-                    )
-                })}
-            </div>
-        </div>
-
-        {/* Schedule List */}
-        <div className="bg-white rounded-2xl shadow-sm min-h-[400px] flex flex-col relative" ref={captureRef}>
-            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white rounded-t-2xl">
-                <h2 className="text-lg font-bold flex items-center gap-2">
-                    <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded text-sm">
-                        {currentDate.getMonth()+1}월 {currentDate.getDate()}일
-                    </span>
-                    계획표
-                </h2>
-                <button 
-                    onClick={openAddModal}
-                    className="text-sm bg-black text-white px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-gray-800 transition shadow-md"
-                >
-                    <Plus className="w-4 h-4" />
-                    일정 추가
-                </button>
-            </div>
-
-            <div className="p-4 flex-1 flex flex-col gap-1 pb-8">
-                {displayItems.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-400 py-10">
-                        <Calendar className="w-12 h-12 mb-2 opacity-20" />
-                        <p>등록된 일정이 없습니다.</p>
-                        <p className="text-xs mt-1">상단의 '일정 추가'를 눌러보세요!</p>
-                    </div>
-                ) : (
-                    displayItems.map((item, idx) => (
-                        <div 
-                            key={`${item.id}-${idx}`}
-                            className={`group flex items-center gap-3 py-2 px-3 transition-all rounded-lg ${
-                                item.completed 
-                                    ? 'bg-white opacity-50' 
-                                    : item.isRecurring && !item.recurringOriginId 
-                                        ? 'bg-purple-50' // Colored background for recurring items
-                                        : 'bg-white'
-                            } border-b border-gray-50 last:border-0`}
-                        >
-                            {/* Time - Left Aligned */}
-                            <div className={`text-xs sm:text-sm font-bold whitespace-nowrap w-28 flex-shrink-0 text-left ${item.completed ? 'text-gray-300' : 'text-indigo-500'}`}>
-                                {getDisplayTime(item)}
-                            </div>
-
-                            <div className="w-px h-8 bg-gray-100 mx-1"></div>
-
-                            <div className="flex-1 min-w-0">
-                                <p className={`text-base font-medium truncate ${item.completed ? 'line-through text-gray-300' : 'text-gray-800'}`}>
-                                    {item.text}
-                                </p>
-                                {item.isRecurring && !item.recurringOriginId && (
-                                    <span className="text-[10px] text-purple-300 flex items-center gap-1 mt-0.5">
-                                        <Repeat className="w-3 h-3" /> 매주 고정
-                                    </span>
-                                )}
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                                <button
-                                    onClick={() => openEditModal(item)}
-                                    className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-indigo-600 rounded-md transition"
-                                >
-                                    <Edit2 className="w-4 h-4" />
-                                </button>
-                                
-                                <button 
-                                    onClick={() => deleteSchedule(item.id, item.isRecurring && !item.recurringOriginId, dateKey)}
-                                    className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 rounded-md transition"
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </button>
-
-                                <button 
-                                    onClick={() => toggleComplete(item, item.isRecurring && !item.recurringOriginId, dateKey)}
-                                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ml-1 flex-shrink-0 ${
-                                        item.completed 
-                                            ? 'bg-green-400 border-green-400' 
-                                            : 'border-gray-200 hover:border-green-300'
-                                    }`}
-                                >
-                                    {item.completed && <CheckSquare className="w-3 h-3 text-white" />}
-                                </button>
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
+        const TodaysPlan = () => {
+            // --- State ---
+            const [currentDate, setCurrentDate] = useState(new Date());
+            const [tasks, setTasks] = useState([]); 
+            const [schedules, setSchedules] = useState({}); 
+            const [recurring, setRecurring] = useState([]); // [{ id, dayOfWeek, time, text, endTime }]
             
-            <div className="h-4 bg-white rounded-b-2xl"></div>
-        </div>
-      </main>
+            const [isMenuOpen, setIsMenuOpen] = useState(false); 
+            const [isAddScheduleOpen, setIsAddScheduleOpen] = useState(false);
+            
+            // Add/Edit Single Schedule Form State
+            const [selectedTime, setSelectedTime] = useState("09:00");
+            const [selectedTaskText, setSelectedTaskText] = useState("");
+            const [editingItem, setEditingItem] = useState(null); 
 
-      {/* --- Unified Menu Modal (Recurring & Tasks) --- */}
-      {isMenuOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-xl flex flex-col max-h-[85vh]">
-                <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl flex-shrink-0">
-                    <h3 className="font-bold text-lg text-gray-800">설정 및 관리</h3>
-                    <button onClick={() => { setIsMenuOpen(false); cancelEditRecur(); }}><X className="w-5 h-5 text-gray-500" /></button>
-                </div>
+            // Recurring Form State (Inside Menu) - Manual Input
+            const [recurStartAmPm, setRecurStartAmPm] = useState("PM");
+            const [recurStartH, setRecurStartH] = useState("2");
+            const [recurStartM, setRecurStartM] = useState("00");
+            
+            const [recurEndAmPm, setRecurEndAmPm] = useState("PM");
+            const [recurEndH, setRecurEndH] = useState("3");
+            const [recurEndM, setRecurEndM] = useState("00");
+
+            const [recurText, setRecurText] = useState("");
+            const [recurDays, setRecurDays] = useState([]); 
+            const [editingRecurId, setEditingRecurId] = useState(null); 
+
+            const captureRef = useRef(null);
+
+            // --- Init & Persistence ---
+            useEffect(() => {
+                loadScript("https://html2canvas.hertzen.com/dist/html2canvas.min.js");
                 
-                <div className="overflow-y-auto p-4 space-y-8 flex-1 min-h-0">
+                const savedTasks = JSON.parse(localStorage.getItem('my_tasks') || '[]');
+                const savedSchedules = JSON.parse(localStorage.getItem('my_schedules') || '{}');
+                const savedRecurring = JSON.parse(localStorage.getItem('my_recurring') || '[]');
+                
+                setTasks(savedTasks);
+                setSchedules(savedSchedules);
+                setRecurring(savedRecurring);
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem('my_tasks', JSON.stringify(tasks));
+                localStorage.setItem('my_schedules', JSON.stringify(schedules));
+                localStorage.setItem('my_recurring', JSON.stringify(recurring));
+            }, [tasks, schedules, recurring]);
+
+            // --- Helpers ---
+            
+            const formatAmPm = (hour) => {
+                const h = parseInt(hour, 10);
+                const ampm = h < 12 ? 'AM' : 'PM';
+                const h12 = h > 12 ? h - 12 : (h === 0 ? 12 : h === 12 ? 12 : h);
+                return { ampm, h12 };
+            };
+
+            // Convert 12h inputs to 24h string for storage "HH:MM"
+            const to24Hour = (ampm, h, m) => {
+                let hour = parseInt(h, 10);
+                if (ampm === 'PM' && hour < 12) hour += 12;
+                if (ampm === 'AM' && hour === 12) hour = 0;
+                return `${hour < 10 ? '0'+hour : hour}:${m}`;
+            };
+
+            // Convert 24h string "HH:MM" to 12h parts for editing
+            const to12HourParts = (timeStr) => {
+                const [hStr, mStr] = timeStr.split(':');
+                const h = parseInt(hStr, 10);
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                let h12 = h % 12;
+                if (h12 === 0) h12 = 12;
+                return { ampm, h: h12.toString(), m: mStr };
+            };
+
+            // 1시간 단위 시간 슬롯 생성 (9시 ~ 23시) - 형식 변경: AM 9시 - 10시
+            const generateTimeSlots = () => {
+                const slots = [];
+                for (let i = 9; i <= 23; i++) {
+                const value = `${i < 10 ? '0' + i : i}:00`;
+                
+                const start = formatAmPm(i);
+                const nextHRaw = i + 1;
+                const next = formatAmPm(nextHRaw > 23 ? 0 : nextHRaw); 
+                
+                const label = `${start.ampm} ${start.h12}시 - ${next.h12}시`;
+                
+                slots.push({ value, label });
+                }
+                return slots;
+            };
+            
+            // 리스트 표시용 시간 포맷터
+            const getDisplayTime = (item) => {
+                if (!item.time) return "";
+                
+                // 고정 스케줄 등에서 endTime이 지정된 경우 (수기 입력)
+                if (item.endTime) {
+                    const [sh, sm] = item.time.split(':').map(Number);
+                    const [eh, em] = item.endTime.split(':').map(Number);
                     
-                    {/* Section 1: Recurring Schedules */}
-                    <section>
-                        <h4 className="flex items-center gap-2 font-bold text-indigo-700 mb-3 text-base">
-                            <Repeat className="w-4 h-4" />
-                            {editingRecurId ? '고정 스케줄 수정' : '고정 스케줄 추가'}
-                        </h4>
-                        
-                        <div className={`p-4 rounded-xl mb-4 border transition-colors ${editingRecurId ? 'bg-orange-50 border-orange-200' : 'bg-indigo-50 border-indigo-100'}`}>
-                            <div className="flex flex-col gap-3">
-                                {/* Manual Time Inputs with AM/PM Selector */}
-                                <div className="flex items-center gap-1 flex-wrap">
-                                    {/* Start Time */}
-                                    <div className="flex items-center gap-1 bg-white p-1 rounded border">
-                                        <button 
-                                            onClick={() => toggleAmPm(setRecurStartAmPm, recurStartAmPm)}
-                                            className="px-1.5 py-0.5 text-xs font-bold bg-gray-100 rounded hover:bg-gray-200 text-indigo-600 min-w-[32px]"
-                                        >
-                                            {recurStartAmPm}
-                                        </button>
-                                        <input 
-                                            type="text" inputMode="numeric" maxLength={2}
-                                            className="w-8 text-center p-1 outline-none text-sm font-bold appearance-none"
-                                            value={recurStartH}
-                                            onChange={(e) => setRecurStartH(e.target.value)}
-                                            placeholder="시"
-                                        />
-                                        <span className="text-gray-400">:</span>
-                                        <input 
-                                            type="text" inputMode="numeric" maxLength={2}
-                                            className="w-8 text-center p-1 outline-none text-sm font-bold appearance-none"
-                                            value={recurStartM}
-                                            onChange={(e) => setRecurStartM(e.target.value)}
-                                            placeholder="분"
-                                        />
-                                    </div>
-                                    <span className="text-gray-400 text-sm">~</span>
-                                    {/* End Time */}
-                                    <div className="flex items-center gap-1 bg-white p-1 rounded border">
-                                        <button 
-                                            onClick={() => toggleAmPm(setRecurEndAmPm, recurEndAmPm)}
-                                            className="px-1.5 py-0.5 text-xs font-bold bg-gray-100 rounded hover:bg-gray-200 text-indigo-600 min-w-[32px]"
-                                        >
-                                            {recurEndAmPm}
-                                        </button>
-                                        <input 
-                                            type="text" inputMode="numeric" maxLength={2}
-                                            className="w-8 text-center p-1 outline-none text-sm font-bold appearance-none"
-                                            value={recurEndH}
-                                            onChange={(e) => setRecurEndH(e.target.value)}
-                                            placeholder="시"
-                                        />
-                                        <span className="text-gray-400">:</span>
-                                        <input 
-                                            type="text" inputMode="numeric" maxLength={2}
-                                            className="w-8 text-center p-1 outline-none text-sm font-bold appearance-none"
-                                            value={recurEndM}
-                                            onChange={(e) => setRecurEndM(e.target.value)}
-                                            placeholder="분"
-                                        />
-                                    </div>
-                                </div>
+                    const start = formatAmPm(sh);
+                    const end = formatAmPm(eh);
+                    
+                    const startStr = `${start.ampm} ${start.h12}:${sm < 10 ? '0'+sm : sm}`;
+                    const endStr = `${end.ampm} ${end.h12}:${em < 10 ? '0'+em : em}`;
+                    
+                    const sLabel = sm === 0 ? `${start.ampm} ${start.h12}시` : startStr;
+                    const eLabel = em === 0 ? `${end.h12}시` : `${end.h12}:${em < 10 ? '0'+em : em}`;
+                    
+                    if (start.ampm !== end.ampm) {
+                        return `${sLabel} - ${end.ampm} ${eLabel}`;
+                    }
+                    return `${sLabel} - ${eLabel}`;
+                }
 
-                                <input 
-                                    type="text"
-                                    placeholder="내용 (예: 수학학원)"
-                                    className="w-full p-2 rounded-lg border text-sm"
-                                    value={recurText}
-                                    onChange={(e) => setRecurText(e.target.value)}
-                                />
-                                
-                                {/* Day Selector */}
-                                <div className="flex justify-between gap-1">
-                                    {['일','월','화','수','목','금','토'].map((d, i) => (
-                                        <button
-                                            key={i}
-                                            onClick={() => toggleRecurDay(i)}
-                                            className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${
-                                                recurDays.includes(i)
-                                                    ? 'bg-indigo-600 text-white shadow-md'
-                                                    : 'bg-white border text-gray-400 hover:border-indigo-300'
-                                            } ${i===0 ? 'text-red-300' : i===6 ? 'text-blue-300' : ''}`}
-                                        >
-                                            {d}
-                                        </button>
-                                    ))}
-                                </div>
-                                
-                                <div className="flex gap-2">
-                                    {editingRecurId && (
-                                        <button 
-                                            onClick={cancelEditRecur}
-                                            className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-bold hover:bg-gray-300"
-                                        >
-                                            취소
-                                        </button>
-                                    )}
-                                    <button 
-                                        onClick={saveRecurringSchedule}
-                                        className={`flex-1 py-2 rounded-lg text-sm font-bold text-white transition disabled:opacity-50 ${editingRecurId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-                                        disabled={!recurText || recurDays.length === 0}
-                                    >
-                                        {editingRecurId ? '수정 완료' : '고정 스케줄 추가'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* List of Recurring Rules */}
-                        <div className="space-y-2">
-                             {recurring.length === 0 ? (
-                                 <p className="text-xs text-gray-400 text-center py-2">등록된 고정 스케줄이 없습니다.</p>
-                             ) : (
-                                 recurring.sort((a,b) => a.dayOfWeek - b.dayOfWeek || a.time.localeCompare(b.time)).map((r) => (
-                                     <div key={r.id} className={`flex justify-between items-center border p-2 rounded-lg text-sm shadow-sm ${editingRecurId === r.id ? 'bg-orange-50 border-orange-200 ring-1 ring-orange-300' : 'bg-white'}`}>
-                                         <div className="flex items-center gap-2">
-                                             <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${r.dayOfWeek===0?'bg-red-100 text-red-600':r.dayOfWeek===6?'bg-blue-100 text-blue-600':'bg-gray-100 text-gray-600'}`}>
-                                                 {getDayName(r.dayOfWeek)}
-                                             </span>
-                                             <span className="font-bold text-gray-600 text-xs whitespace-nowrap">{getDisplayTime(r)}</span>
-                                             <span className="truncate max-w-[80px] sm:max-w-[100px]">{r.text}</span>
-                                         </div>
-                                         <div className="flex items-center gap-1">
-                                             <button onClick={() => startEditRecur(r)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">
-                                                 <Edit2 className="w-4 h-4" />
-                                             </button>
-                                             <button onClick={() => deleteRecurringItem(r.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
-                                                 <Trash2 className="w-4 h-4" />
-                                             </button>
-                                         </div>
-                                     </div>
-                                 ))
-                             )}
-                        </div>
-                    </section>
-
-                    <div className="border-t"></div>
-
-                    {/* Section 2: Task Pool */}
-                    <section>
-                         <h4 className="flex items-center gap-2 font-bold text-gray-700 mb-3 text-base">
-                            <CheckSquare className="w-4 h-4" />
-                            할 일 저장소
-                        </h4>
-                        <div className="flex gap-2 mb-3">
-                             <input 
-                                type="text"
-                                placeholder="자주 쓰는 할 일"
-                                className="flex-1 p-2 border rounded-lg text-sm"
-                                id="newTaskInput"
-                                onKeyDown={(e) => {
-                                    if(e.key==='Enter') {
-                                        addTaskToPool(e.target.value);
-                                        e.target.value = '';
-                                    }
-                                }}
-                             />
-                             <button 
-                                onClick={() => {
-                                    const input = document.getElementById('newTaskInput');
-                                    addTaskToPool(input.value);
-                                    input.value = '';
-                                }}
-                                className="bg-black text-white px-3 py-2 rounded-lg text-sm"
-                             >
-                                 저장
-                             </button>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            {tasks.map((task, idx) => (
-                                <span key={idx} className="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded-full text-sm text-gray-700">
-                                    {task}
-                                    <button onClick={() => removeTaskFromPool(task)} className="text-gray-400 hover:text-red-500 ml-1">
-                                        <X className="w-3 h-3" />
-                                    </button>
-                                </span>
-                            ))}
-                            {tasks.length === 0 && <p className="text-xs text-gray-400">저장된 할 일이 없습니다.</p>}
-                        </div>
-                    </section>
-
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* --- Add Schedule Modal (Simplified) --- */}
-      {isAddScheduleOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center sm:p-4">
-            <div className="bg-white w-full max-w-sm rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col animate-slide-up sm:animate-none">
-                <div className="p-4 border-b flex justify-between items-center">
-                    <h3 className="font-bold text-lg">{editingItem ? '일정 수정' : '일정 추가'}</h3>
-                    <button onClick={() => setIsAddScheduleOpen(false)}><X className="w-5 h-5 text-gray-400" /></button>
-                </div>
+                // 일반 일정 (1시간 단위)
+                const [h] = item.time.split(':').map(Number);
+                const start = formatAmPm(h);
+                const nextHRaw = h + 1;
+                const next = formatAmPm(nextHRaw > 23 ? 0 : nextHRaw);
                 
-                <div className="p-5 flex flex-col gap-4">
-                    <div>
-                        <label className="text-xs font-bold text-gray-500 mb-1 block">시간 선택</label>
-                        <select 
-                            className="w-full p-3 border rounded-xl bg-white text-base font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                            value={selectedTime}
-                            onChange={(e) => setSelectedTime(e.target.value)}
-                        >
-                            {generateTimeSlots().map(slot => (
-                                <option key={slot.value} value={slot.value}>{slot.label}</option>
-                            ))}
-                        </select>
-                    </div>
+                return `${start.ampm} ${start.h12}시 - ${next.h12}시`;
+            };
 
-                    <div>
-                        <label className="text-xs font-bold text-gray-500 mb-1 block">할 일 선택</label>
-                        {tasks.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mb-2">
-                                {tasks.map((task, idx) => (
+            const getWeekDays = (date) => {
+                const start = new Date(date);
+                start.setDate(start.getDate() - start.getDay()); // Sunday
+                const days = [];
+                for (let i = 0; i < 7; i++) {
+                const d = new Date(start);
+                d.setDate(start.getDate() + i);
+                days.push(d);
+                }
+                return days;
+            };
+
+            const formatDateKey = (date) => {
+                return date.toISOString().split('T')[0];
+            };
+
+            const getDayOfWeek = (date) => date.getDay(); 
+
+            const getDayColor = (dayIndex) => {
+                if (dayIndex === 0) return 'text-red-500'; // Sunday
+                if (dayIndex === 6) return 'text-blue-500'; // Saturday
+                return 'text-gray-500';
+            };
+
+            const getDayName = (dayIndex) => ['일','월','화','수','목','금','토'][dayIndex];
+
+            // --- Actions ---
+            
+            // 1. Task Pool Actions
+            const addTaskToPool = (text) => {
+                if (!text.trim()) return;
+                if (!tasks.includes(text)) {
+                setTasks([...tasks, text]);
+                }
+            };
+
+            const removeTaskFromPool = (task) => {
+                setTasks(tasks.filter(t => t !== task));
+            };
+
+            // 2. Recurring Schedule Actions
+            const toggleRecurDay = (dayIndex) => {
+                if (recurDays.includes(dayIndex)) {
+                    setRecurDays(recurDays.filter(d => d !== dayIndex));
+                } else {
+                    setRecurDays([...recurDays, dayIndex].sort());
+                }
+            };
+
+            const toggleAmPm = (setter, current) => {
+                setter(current === 'AM' ? 'PM' : 'AM');
+            };
+
+            const startEditRecur = (item) => {
+                setEditingRecurId(item.id);
+                
+                const startParts = to12HourParts(item.time);
+                setRecurStartAmPm(startParts.ampm);
+                setRecurStartH(startParts.h);
+                setRecurStartM(startParts.m);
+                
+                if (item.endTime) {
+                    const endParts = to12HourParts(item.endTime);
+                    setRecurEndAmPm(endParts.ampm);
+                    setRecurEndH(endParts.h);
+                    setRecurEndM(endParts.m);
+                } else {
+                    // Fallback logic
+                    setRecurEndAmPm(startParts.ampm);
+                    setRecurEndH((parseInt(startParts.h)+1).toString());
+                    setRecurEndM("00");
+                }
+
+                setRecurText(item.text);
+                setRecurDays([item.dayOfWeek]); 
+            };
+
+            const cancelEditRecur = () => {
+                setEditingRecurId(null);
+                setRecurText("");
+                setRecurDays([]);
+                
+                setRecurStartAmPm("PM");
+                setRecurStartH("2");
+                setRecurStartM("00");
+                
+                setRecurEndAmPm("PM");
+                setRecurEndH("3");
+                setRecurEndM("00");
+            };
+
+            const saveRecurringSchedule = () => {
+                if (!recurText || recurDays.length === 0) return;
+                
+                // Pad single digits for minute (Hour doesn't matter for storage, but clean)
+                // Store as 24h format for consistent sorting
+                const timeStr = to24Hour(recurStartAmPm, recurStartH, recurStartM);
+                const endTimeStr = to24Hour(recurEndAmPm, recurEndH, recurEndM);
+
+                if (editingRecurId) {
+                    const newItems = recurDays.map(day => ({
+                        id: Date.now() + Math.random(),
+                        dayOfWeek: day,
+                        time: timeStr,
+                        endTime: endTimeStr,
+                        text: recurText
+                    }));
+                    
+                    const filtered = recurring.filter(r => r.id !== editingRecurId);
+                    setRecurring([...filtered, ...newItems]);
+                    cancelEditRecur();
+                } else {
+                    const newItems = recurDays.map(day => ({
+                        id: Date.now() + Math.random(), 
+                        dayOfWeek: day,
+                        time: timeStr,
+                        endTime: endTimeStr,
+                        text: recurText
+                    }));
+                    setRecurring([...recurring, ...newItems]);
+                    setRecurText("");
+                    setRecurDays([]);
+                }
+            };
+
+            const deleteRecurringItem = (id) => {
+                if (editingRecurId === id) cancelEditRecur();
+                setRecurring(recurring.filter(r => r.id !== id));
+            };
+
+            // 3. Daily Schedule Actions
+            const openAddModal = () => {
+                setEditingItem(null);
+                setSelectedTime("09:00");
+                setSelectedTaskText("");
+                setIsAddScheduleOpen(true);
+            };
+
+            const openEditModal = (item) => {
+                setEditingItem(item);
+                setSelectedTime(item.time);
+                setSelectedTaskText(item.text);
+                setIsAddScheduleOpen(true);
+            };
+
+            const saveSchedule = () => {
+                if (!selectedTaskText) return;
+
+                if (editingItem) {
+                    // Edit Mode
+                    if (editingItem.isRecurring && !editingItem.recurringOriginId) {
+                        const dateKey = formatDateKey(currentDate);
+                        const currentDaySchedules = schedules[dateKey] || [];
+                        const newConcrete = {
+                            id: Date.now(),
+                            time: selectedTime,
+                            text: selectedTaskText,
+                            completed: false,
+                            recurringOriginId: editingItem.id 
+                        };
+                        setSchedules({ ...schedules, [dateKey]: [...currentDaySchedules, newConcrete] });
+                    } else {
+                        const dateKey = formatDateKey(currentDate);
+                        const currentDaySchedules = schedules[dateKey] || [];
+                        const updated = currentDaySchedules.map(s => s.id === editingItem.id ? { ...s, time: selectedTime, text: selectedTaskText } : s);
+                        setSchedules({ ...schedules, [dateKey]: updated });
+                    }
+                } else {
+                    // Add Mode
+                    const newEntry = {
+                        id: Date.now(),
+                        time: selectedTime,
+                        text: selectedTaskText,
+                        completed: false
+                    };
+                    const dateKey = formatDateKey(currentDate);
+                    const currentDaySchedules = schedules[dateKey] || [];
+                    setSchedules({
+                        ...schedules,
+                        [dateKey]: [...currentDaySchedules, newEntry]
+                    });
+                }
+                
+                setIsAddScheduleOpen(false);
+                setSelectedTaskText("");
+                setEditingItem(null);
+            };
+
+            const toggleComplete = (entry, isVirtualRecurring, dateKey) => {
+                if (isVirtualRecurring) {
+                    const currentDaySchedules = schedules[dateKey] || [];
+                    const newConcrete = {
+                        ...entry,
+                        id: Date.now(),
+                        recurringOriginId: entry.id,
+                        completed: true
+                    };
+                    setSchedules({ ...schedules, [dateKey]: [...currentDaySchedules, newConcrete] });
+                } else {
+                    const currentDaySchedules = schedules[dateKey] || [];
+                    const updated = currentDaySchedules.map(s => 
+                        s.id === entry.id ? { ...s, completed: !s.completed } : s
+                    );
+                    setSchedules({ ...schedules, [dateKey]: updated });
+                }
+            };
+
+            const deleteSchedule = (id, isVirtualRecurring, dateKey) => {
+                if (isVirtualRecurring) {
+                    if(window.confirm('이 반복 일정을 이번 주 오늘만 삭제하시겠습니까?\n(영구 삭제는 우측 상단 메뉴 > 고정 스케줄 관리에서 가능합니다)')) {
+                        alert("반복 일정의 영구 삭제는 우측 상단 메뉴(≡)의 '고정 스케줄' 탭에서 할 수 있습니다.");
+                    }
+                } else {
+                    if(window.confirm('이 일정을 삭제하시겠습니까?')) {
+                        const currentDaySchedules = schedules[dateKey] || [];
+                        setSchedules({
+                            ...schedules,
+                            [dateKey]: currentDaySchedules.filter(s => s.id !== id)
+                        });
+                    }
+                }
+            };
+
+            const handleShare = async () => {
+                if (!captureRef.current || !window.html2canvas) {
+                    alert("캡쳐 도구를 준비 중입니다. 잠시 후 다시 시도해주세요.");
+                    return;
+                }
+                try {
+                    const canvas = await window.html2canvas(captureRef.current, {
+                        backgroundColor: "#ffffff",
+                        scale: 2
+                    });
+                    canvas.toBlob(async (blob) => {
+                        if (!blob) return;
+                        const file = new File([blob], `오늘의계획_${formatDateKey(currentDate)}.png`, { type: "image/png" });
+                        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                            try {
+                                await navigator.share({
+                                    files: [file],
+                                    title: '오늘의 계획',
+                                    text: `${formatDateKey(currentDate)} 일정표입니다.`
+                                });
+                            } catch (e) { if (e.name !== 'AbortError') console.error(e); }
+                        } else {
+                            const link = document.createElement('a');
+                            link.download = file.name;
+                            link.href = canvas.toDataURL();
+                            link.click();
+                        }
+                    });
+                } catch (err) {
+                    console.error("Capture failed", err);
+                    alert("이미지 저장에 실패했습니다.");
+                }
+            };
+
+            // --- Render Logic ---
+            const weekDays = getWeekDays(currentDate);
+            const dateKey = formatDateKey(currentDate);
+            const dayOfWeek = getDayOfWeek(currentDate);
+
+            const todaysRecurring = recurring.filter(r => r.dayOfWeek === dayOfWeek);
+            const todaysConcrete = schedules[dateKey] || [];
+            const displayItems = [];
+
+            todaysRecurring.forEach(r => {
+                const override = todaysConcrete.find(c => c.recurringOriginId === r.id);
+                if (!override) {
+                    displayItems.push({ ...r, isRecurring: true });
+                }
+            });
+            todaysConcrete.forEach(c => {
+                displayItems.push({ ...c, isRecurring: !!c.recurringOriginId });
+            });
+
+            // Sort by Time (HH:MM string comparison works for 24h format)
+            displayItems.sort((a, b) => a.time.localeCompare(b.time));
+
+            return (
+                <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-800">
+                
+                {/* Header */}
+                <header className="bg-white px-4 py-4 shadow-sm flex justify-between items-center sticky top-0 z-10">
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => setIsMenuOpen(true)}
+                            className="p-2 bg-indigo-50 text-indigo-600 rounded-full hover:bg-indigo-100 transition"
+                            title="설정 및 할일 관리"
+                        >
+                            <Menu className="w-5 h-5" />
+                        </button>
+                        <h1 className="text-xl font-bold text-indigo-600 flex items-center gap-1">
+                            오늘의 계획
+                        </h1>
+                    </div>
+                    <button 
+                        onClick={handleShare}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition"
+                        title="공유하기"
+                    >
+                        <Share2 className="w-5 h-5" />
+                    </button>
+                </header>
+
+                {/* Main Content */}
+                <main className="flex-1 max-w-lg w-full mx-auto p-4 flex flex-col gap-4">
+                    
+                    {/* Weekly Calendar */}
+                    <div className="bg-white rounded-2xl shadow-sm p-4 overflow-x-auto">
+                        <div className="flex justify-between min-w-max gap-2">
+                            {weekDays.map((date, idx) => {
+                                const isSelected = formatDateKey(date) === dateKey;
+                                const isToday = formatDateKey(date) === formatDateKey(new Date());
+                                const dNum = date.getDate();
+                                const dIdx = date.getDay();
+                                const dName = getDayName(dIdx);
+                                const colorClass = getDayColor(dIdx);
+                                
+                                return (
                                     <button
                                         key={idx}
-                                        onClick={() => setSelectedTaskText(task)}
-                                        className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                                            selectedTaskText === task 
-                                                ? 'bg-indigo-600 text-white border-indigo-600' 
-                                                : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'
-                                        }`}
+                                        onClick={() => setCurrentDate(date)}
+                                        className={`flex flex-col items-center justify-center w-12 h-16 rounded-xl transition-all ${
+                                            isSelected 
+                                                ? 'bg-indigo-600 shadow-md scale-105' 
+                                                : 'bg-gray-50 hover:bg-gray-100'
+                                        } ${isToday && !isSelected ? 'border-2 border-indigo-200' : ''}`}
                                     >
-                                        {task}
+                                        <span className={`text-xs font-medium ${isSelected ? 'text-indigo-200' : colorClass}`}>{dName}</span>
+                                        <span className={`text-lg font-bold ${isSelected ? 'text-white' : colorClass}`}>{dNum}</span>
                                     </button>
-                                ))}
-                            </div>
-                        )}
-                        <input 
-                            type="text" 
-                            placeholder="할 일을 입력하세요..." 
-                            className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                            value={selectedTaskText}
-                            onChange={(e) => setSelectedTaskText(e.target.value)}
-                        />
+                                )
+                            })}
+                        </div>
                     </div>
 
-                    <button 
-                        onClick={saveSchedule}
-                        disabled={!selectedTaskText}
-                        className="w-full py-3.5 bg-black text-white rounded-xl font-bold text-lg hover:bg-gray-800 disabled:opacity-50 mt-2 shadow-lg"
-                    >
-                        {editingItem ? '수정 완료' : '일정 등록'}
-                    </button>
-                </div>
-            </div>
-        </div>
-      )}
-      
-      <style>{`
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
-        .animate-slide-up { animation: slide-up 0.3s ease-out forwards; }
-      `}</style>
-    </div>
-  );
-};
+                    {/* Schedule List */}
+                    <div className="bg-white rounded-2xl shadow-sm min-h-[400px] flex flex-col relative" ref={captureRef}>
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white rounded-t-2xl">
+                            <h2 className="text-lg font-bold flex items-center gap-2">
+                                <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded text-sm">
+                                    {currentDate.getMonth()+1}월 {currentDate.getDate()}일
+                                </span>
+                                계획표
+                            </h2>
+                            <button 
+                                onClick={openAddModal}
+                                className="text-sm bg-black text-white px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-gray-800 transition shadow-md"
+                            >
+                                <Plus className="w-4 h-4" />
+                                일정 추가
+                            </button>
+                        </div>
 
-export default TodaysPlan;
+                        <div className="p-4 flex-1 flex flex-col gap-1 pb-8">
+                            {displayItems.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full text-gray-400 py-10">
+                                    <Calendar className="w-12 h-12 mb-2 opacity-20" />
+                                    <p>등록된 일정이 없습니다.</p>
+                                    <p className="text-xs mt-1">상단의 '일정 추가'를 눌러보세요!</p>
+                                </div>
+                            ) : (
+                                displayItems.map((item, idx) => (
+                                    <div 
+                                        key={`${item.id}-${idx}`}
+                                        className={`group flex items-center gap-3 py-2 px-3 transition-all rounded-lg ${
+                                            item.completed 
+                                                ? 'bg-white opacity-50' 
+                                                : item.isRecurring && !item.recurringOriginId 
+                                                    ? 'bg-purple-50' // Colored background for recurring items
+                                                    : 'bg-white'
+                                        } border-b border-gray-50 last:border-0`}
+                                    >
+                                        {/* Time - Left Aligned */}
+                                        <div className={`text-xs sm:text-sm font-bold whitespace-nowrap w-28 flex-shrink-0 text-left ${item.completed ? 'text-gray-300' : 'text-indigo-500'}`}>
+                                            {getDisplayTime(item)}
+                                        </div>
+
+                                        <div className="w-px h-8 bg-gray-100 mx-1"></div>
+
+                                        <div className="flex-1 min-w-0">
+                                            <p className={`text-base font-medium truncate ${item.completed ? 'line-through text-gray-300' : 'text-gray-800'}`}>
+                                                {item.text}
+                                            </p>
+                                            {item.isRecurring && !item.recurringOriginId && (
+                                                <span className="text-[10px] text-purple-300 flex items-center gap-1 mt-0.5">
+                                                    <Repeat className="w-3 h-3" /> 매주 고정
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={() => openEditModal(item)}
+                                                className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-indigo-600 rounded-md transition"
+                                            >
+                                                <Edit2 className="w-4 h-4" />
+                                            </button>
+                                            
+                                            <button 
+                                                onClick={() => deleteSchedule(item.id, item.isRecurring && !item.recurringOriginId, dateKey)}
+                                                className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-300 hover:text-red-500 rounded-md transition"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+
+                                            <button 
+                                                onClick={() => toggleComplete(item, item.isRecurring && !item.recurringOriginId, dateKey)}
+                                                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ml-1 flex-shrink-0 ${
+                                                    item.completed 
+                                                        ? 'bg-green-400 border-green-400' 
+                                                        : 'border-gray-200 hover:border-green-300'
+                                                }`}
+                                            >
+                                                {item.completed && <CheckSquare className="w-3 h-3 text-white" />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        
+                        <div className="h-4 bg-white rounded-b-2xl"></div>
+                    </div>
+                </main>
+
+                {/* --- Unified Menu Modal (Recurring & Tasks) --- */}
+                {isMenuOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white w-full max-w-md rounded-2xl shadow-xl flex flex-col max-h-[85vh]">
+                            <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl flex-shrink-0">
+                                <h3 className="font-bold text-lg text-gray-800">설정 및 관리</h3>
+                                <button onClick={() => { setIsMenuOpen(false); cancelEditRecur(); }}><X className="w-5 h-5 text-gray-500" /></button>
+                            </div>
+                            
+                            <div className="overflow-y-auto p-4 space-y-8 flex-1 min-h-0">
+                                
+                                {/* Section 1: Recurring Schedules */}
+                                <section>
+                                    <h4 className="flex items-center gap-2 font-bold text-indigo-700 mb-3 text-base">
+                                        <Repeat className="w-4 h-4" />
+                                        {editingRecurId ? '고정 스케줄 수정' : '고정 스케줄 추가'}
+                                    </h4>
+                                    
+                                    <div className={`p-4 rounded-xl mb-4 border transition-colors ${editingRecurId ? 'bg-orange-50 border-orange-200' : 'bg-indigo-50 border-indigo-100'}`}>
+                                        <div className="flex flex-col gap-3">
+                                            {/* Manual Time Inputs with AM/PM Selector */}
+                                            <div className="flex items-center gap-1 flex-wrap">
+                                                {/* Start Time */}
+                                                <div className="flex items-center gap-1 bg-white p-1 rounded border">
+                                                    <button 
+                                                        onClick={() => toggleAmPm(setRecurStartAmPm, recurStartAmPm)}
+                                                        className="px-1.5 py-0.5 text-xs font-bold bg-gray-100 rounded hover:bg-gray-200 text-indigo-600 min-w-[32px]"
+                                                    >
+                                                        {recurStartAmPm}
+                                                    </button>
+                                                    <input 
+                                                        type="text" inputMode="numeric" maxLength={2}
+                                                        className="w-8 text-center p-1 outline-none text-sm font-bold appearance-none"
+                                                        value={recurStartH}
+                                                        onChange={(e) => setRecurStartH(e.target.value)}
+                                                        placeholder="시"
+                                                    />
+                                                    <span className="text-gray-400">:</span>
+                                                    <input 
+                                                        type="text" inputMode="numeric" maxLength={2}
+                                                        className="w-8 text-center p-1 outline-none text-sm font-bold appearance-none"
+                                                        value={recurStartM}
+                                                        onChange={(e) => setRecurStartM(e.target.value)}
+                                                        placeholder="분"
+                                                    />
+                                                </div>
+                                                <span className="text-gray-400 text-sm">~</span>
+                                                {/* End Time */}
+                                                <div className="flex items-center gap-1 bg-white p-1 rounded border">
+                                                    <button 
+                                                        onClick={() => toggleAmPm(setRecurEndAmPm, recurEndAmPm)}
+                                                        className="px-1.5 py-0.5 text-xs font-bold bg-gray-100 rounded hover:bg-gray-200 text-indigo-600 min-w-[32px]"
+                                                    >
+                                                        {recurEndAmPm}
+                                                    </button>
+                                                    <input 
+                                                        type="text" inputMode="numeric" maxLength={2}
+                                                        className="w-8 text-center p-1 outline-none text-sm font-bold appearance-none"
+                                                        value={recurEndH}
+                                                        onChange={(e) => setRecurEndH(e.target.value)}
+                                                        placeholder="시"
+                                                    />
+                                                    <span className="text-gray-400">:</span>
+                                                    <input 
+                                                        type="text" inputMode="numeric" maxLength={2}
+                                                        className="w-8 text-center p-1 outline-none text-sm font-bold appearance-none"
+                                                        value={recurEndM}
+                                                        onChange={(e) => setRecurEndM(e.target.value)}
+                                                        placeholder="분"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <input 
+                                                type="text"
+                                                placeholder="내용 (예: 수학학원)"
+                                                className="w-full p-2 rounded-lg border text-sm"
+                                                value={recurText}
+                                                onChange={(e) => setRecurText(e.target.value)}
+                                            />
+                                            
+                                            {/* Day Selector */}
+                                            <div className="flex justify-between gap-1">
+                                                {['일','월','화','수','목','금','토'].map((d, i) => (
+                                                    <button
+                                                        key={i}
+                                                        onClick={() => toggleRecurDay(i)}
+                                                        className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${
+                                                            recurDays.includes(i)
+                                                                ? 'bg-indigo-600 text-white shadow-md'
+                                                                : 'bg-white border text-gray-400 hover:border-indigo-300'
+                                                        } ${i===0 ? 'text-red-300' : i===6 ? 'text-blue-300' : ''}`}
+                                                    >
+                                                        {d}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            
+                                            <div className="flex gap-2">
+                                                {editingRecurId && (
+                                                    <button 
+                                                        onClick={cancelEditRecur}
+                                                        className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-bold hover:bg-gray-300"
+                                                    >
+                                                        취소
+                                                    </button>
+                                                )}
+                                                <button 
+                                                    onClick={saveRecurringSchedule}
+                                                    className={`flex-1 py-2 rounded-lg text-sm font-bold text-white transition disabled:opacity-50 ${editingRecurId ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                                                    disabled={!recurText || recurDays.length === 0}
+                                                >
+                                                    {editingRecurId ? '수정 완료' : '고정 스케줄 추가'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* List of Recurring Rules */}
+                                    <div className="space-y-2">
+                                        {recurring.length === 0 ? (
+                                            <p className="text-xs text-gray-400 text-center py-2">등록된 고정 스케줄이 없습니다.</p>
+                                        ) : (
+                                            recurring.sort((a,b) => a.dayOfWeek - b.dayOfWeek || a.time.localeCompare(b.time)).map((r) => (
+                                                <div key={r.id} className={`flex justify-between items-center border p-2 rounded-lg text-sm shadow-sm ${editingRecurId === r.id ? 'bg-orange-50 border-orange-200 ring-1 ring-orange-300' : 'bg-white'}`}>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${r.dayOfWeek===0?'bg-red-100 text-red-600':r.dayOfWeek===6?'bg-blue-100 text-blue-600':'bg-gray-100 text-gray-600'}`}>
+                                                            {getDayName(r.dayOfWeek)}
+                                                        </span>
+                                                        <span className="font-bold text-gray-600 text-xs whitespace-nowrap">{getDisplayTime(r)}</span>
+                                                        <span className="truncate max-w-[80px] sm:max-w-[100px]">{r.text}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <button onClick={() => startEditRecur(r)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded">
+                                                            <Edit2 className="w-4 h-4" />
+                                                        </button>
+                                                        <button onClick={() => deleteRecurringItem(r.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </section>
+
+                                <div className="border-t"></div>
+
+                                {/* Section 2: Task Pool */}
+                                <section>
+                                    <h4 className="flex items-center gap-2 font-bold text-gray-700 mb-3 text-base">
+                                        <CheckSquare className="w-4 h-4" />
+                                        할 일 저장소
+                                    </h4>
+                                    <div className="flex gap-2 mb-3">
+                                        <input 
+                                            type="text"
+                                            placeholder="자주 쓰는 할 일"
+                                            className="flex-1 p-2 border rounded-lg text-sm"
+                                            id="newTaskInput"
+                                            onKeyDown={(e) => {
+                                                if(e.key==='Enter') {
+                                                    addTaskToPool(e.target.value);
+                                                    e.target.value = '';
+                                                }
+                                            }}
+                                        />
+                                        <button 
+                                            onClick={() => {
+                                                const input = document.getElementById('newTaskInput');
+                                                addTaskToPool(input.value);
+                                                input.value = '';
+                                            }}
+                                            className="bg-black text-white px-3 py-2 rounded-lg text-sm"
+                                        >
+                                            저장
+                                        </button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {tasks.map((task, idx) => (
+                                            <span key={idx} className="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded-full text-sm text-gray-700">
+                                                {task}
+                                                <button onClick={() => removeTaskFromPool(task)} className="text-gray-400 hover:text-red-500 ml-1">
+                                                    <X className="w-3 h-3" />
+                                                </button>
+                                            </span>
+                                        ))}
+                                        {tasks.length === 0 && <p className="text-xs text-gray-400">저장된 할 일이 없습니다.</p>}
+                                    </div>
+                                </section>
+
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- Add Schedule Modal (Simplified) --- */}
+                {isAddScheduleOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center sm:p-4">
+                        <div className="bg-white w-full max-w-sm rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col animate-slide-up sm:animate-none">
+                            <div className="p-4 border-b flex justify-between items-center">
+                                <h3 className="font-bold text-lg">{editingItem ? '일정 수정' : '일정 추가'}</h3>
+                                <button onClick={() => setIsAddScheduleOpen(false)}><X className="w-5 h-5 text-gray-400" /></button>
+                            </div>
+                            
+                            <div className="p-5 flex flex-col gap-4">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 mb-1 block">시간 선택</label>
+                                    <select 
+                                        className="w-full p-3 border rounded-xl bg-white text-base font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                        value={selectedTime}
+                                        onChange={(e) => setSelectedTime(e.target.value)}
+                                    >
+                                        {generateTimeSlots().map(slot => (
+                                            <option key={slot.value} value={slot.value}>{slot.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 mb-1 block">할 일 선택</label>
+                                    {tasks.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            {tasks.map((task, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => setSelectedTaskText(task)}
+                                                    className={`px-3 py-1.5 rounded-full text-sm border transition ${
+                                                        selectedTaskText === task 
+                                                            ? 'bg-indigo-600 text-white border-indigo-600' 
+                                                            : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'
+                                                    }`}
+                                                >
+                                                    {task}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <input 
+                                        type="text" 
+                                        placeholder="할 일을 입력하세요..." 
+                                        className="w-full p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                        value={selectedTaskText}
+                                        onChange={(e) => setSelectedTaskText(e.target.value)}
+                                    />
+                                </div>
+
+                                <button 
+                                    onClick={saveSchedule}
+                                    disabled={!selectedTaskText}
+                                    className="w-full py-3.5 bg-black text-white rounded-xl font-bold text-lg hover:bg-gray-800 disabled:opacity-50 mt-2 shadow-lg"
+                                >
+                                    {editingItem ? '수정 완료' : '일정 등록'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                <style>{`
+                    .scrollbar-hide::-webkit-scrollbar { display: none; }
+                    .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+                    @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+                    .animate-slide-up { animation: slide-up 0.3s ease-out forwards; }
+                `}</style>
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<TodaysPlan />);
+    </script>
+</body>
+</html>
