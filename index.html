@@ -423,19 +423,19 @@
                                             <button
                                                 key={idx}
                                                 onClick={() => { setCurrentDate(date); setEditingSlotTime(null); }}
-                                                className={`relative flex flex-col items-center justify-center w-full h-14 rounded-xl transition-all ${
+                                                className={`relative flex flex-col items-center justify-center w-full h-16 rounded-xl transition-all ${
                                                     isSelected 
                                                         ? 'bg-blue-600 text-white shadow-md font-bold' 
                                                         : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
                                                 }`}
                                             >
                                                 {isToday && (
-                                                    <span className={`absolute -top-1.5 left-1/2 transform -translate-x-1/2 text-[9px] font-black px-1.5 py-0.2 rounded-full whitespace-nowrap ${isSelected ? 'bg-white text-blue-600' : 'bg-blue-500 text-white'}`}>
+                                                    <span className={`absolute -top-2 left-1/2 transform -translate-x-1/2 text-[10px] font-black px-1.5 py-0.5 rounded-full whitespace-nowrap ${isSelected ? 'bg-white text-blue-600' : 'bg-blue-500 text-white'}`}>
                                                         오늘
                                                     </span>
                                                 )}
-                                                <span className={`text-[11px] font-medium ${isSelected ? 'text-blue-100' : colorClass}`}>{dName}</span>
-                                                <span className="text-base font-bold">{dNum}</span>
+                                                <span className={`text-xs font-semibold ${isSelected ? 'text-blue-100' : colorClass}`}>{dName}</span>
+                                                <span className="text-lg font-extrabold">{dNum}</span>
                                             </button>
                                         );
                                     })}
@@ -482,15 +482,15 @@
 
                         {tasks.length > 0 && viewMode === 'weekly' && (
                             <div className="bg-white rounded-xl p-2.5 shadow-xs border border-gray-100 flex flex-col gap-1.5">
-                                <div className="flex items-center justify-between text-xs text-slate-500 font-semibold px-1">
+                                <div className="flex items-center justify-between text-sm text-slate-500 font-semibold px-1">
                                     <span className="flex items-center gap-1 text-blue-600 font-bold">
-                                        <Sparkles className="w-3.5 h-3.5" />
+                                        <Sparkles className="w-4 h-4" />
                                         할 일 스탬프
                                     </span>
                                     {activeStampTask && (
                                         <button 
                                             onClick={() => setActiveStampTask(null)}
-                                            className="text-[10px] text-red-500 font-bold underline"
+                                            className="text-xs text-red-500 font-bold underline"
                                         >
                                             선택 해제
                                         </button>
@@ -503,13 +503,13 @@
                                             <button
                                                 key={idx}
                                                 onClick={() => handleStampClick(task)}
-                                                className={`px-3 py-1 rounded-lg text-xs font-semibold border transition flex items-center gap-1 ${
+                                                className={`px-3 py-1.5 rounded-lg text-sm font-semibold border transition flex items-center gap-1 ${
                                                     isSelected 
                                                         ? 'bg-blue-600 text-white border-blue-600 shadow-xs ring-2 ring-blue-200' 
                                                         : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                                                 }`}
                                             >
-                                                {isSelected && <Check className="w-3 h-3" />}
+                                                {isSelected && <Check className="w-3.5 h-3.5" />}
                                                 {task}
                                             </button>
                                         );
@@ -523,8 +523,8 @@
                             {/* Filter Bar */}
                             <div className="p-3 border-b border-gray-100 bg-slate-50/50 flex flex-col gap-2">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm font-bold text-slate-800 flex items-center gap-1">
-                                        <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-md font-bold">
+                                    <span className="text-base font-bold text-slate-800 flex items-center gap-1">
+                                        <span className="bg-blue-600 text-white text-sm px-2 py-0.5 rounded-md font-bold">
                                             {currentDate.getMonth()+1}월 {currentDate.getDate()}일
                                         </span>
                                         시간표
@@ -533,20 +533,20 @@
                                     {/* Hide Empty Toggle */}
                                     <button 
                                         onClick={() => setHideEmptySlots(!hideEmptySlots)}
-                                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 border ${
+                                        className={`px-2.5 py-1 rounded-lg text-sm font-bold transition flex items-center gap-1 border ${
                                             hideEmptySlots 
                                                 ? 'bg-blue-50 text-blue-600 border-blue-200' 
                                                 : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
                                         }`}
                                     >
-                                        {hideEmptySlots ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                        {hideEmptySlots ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                         <span>{hideEmptySlots ? '등록된 것만' : '전체 30분칸'}</span>
                                     </button>
                                 </div>
 
                                 {/* Period Filter Tabs */}
                                 {!hideEmptySlots && (
-                                    <div className="grid grid-cols-4 gap-1 p-1 bg-slate-200/60 rounded-xl text-xs font-bold text-slate-600">
+                                    <div className="grid grid-cols-4 gap-1 p-1 bg-slate-200/60 rounded-xl text-sm font-bold text-slate-600">
                                         <button 
                                             onClick={() => setActivePeriod('all')} 
                                             className={`py-1.5 rounded-lg transition ${activePeriod === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'hover:text-slate-900'}`}
@@ -557,19 +557,19 @@
                                             onClick={() => setActivePeriod('morning')} 
                                             className={`py-1.5 rounded-lg transition flex items-center justify-center gap-1 ${activePeriod === 'morning' ? 'bg-white text-blue-600 shadow-xs' : 'hover:text-slate-900'}`}
                                         >
-                                            <Sunrise className="w-3 h-3" /> 오전
+                                            <Sunrise className="w-3.5 h-3.5" /> 오전
                                         </button>
                                         <button 
                                             onClick={() => setActivePeriod('afternoon')} 
                                             className={`py-1.5 rounded-lg transition flex items-center justify-center gap-1 ${activePeriod === 'afternoon' ? 'bg-white text-orange-500 shadow-xs' : 'hover:text-slate-900'}`}
                                         >
-                                            <Sun className="w-3 h-3" /> 오후
+                                            <Sun className="w-3.5 h-3.5" /> 오후
                                         </button>
                                         <button 
                                             onClick={() => setActivePeriod('evening')} 
                                             className={`py-1.5 rounded-lg transition flex items-center justify-center gap-1 ${activePeriod === 'evening' ? 'bg-white text-indigo-600 shadow-xs' : 'hover:text-slate-900'}`}
                                         >
-                                            <Moon className="w-3 h-3" /> 저녁
+                                            <Moon className="w-3.5 h-3.5" /> 저녁
                                         </button>
                                     </div>
                                 )}
@@ -577,7 +577,7 @@
 
                             <div className="divide-y divide-slate-100 max-h-[580px] overflow-y-auto">
                                 {visibleSlots.length === 0 ? (
-                                    <div className="p-8 text-center text-slate-400 text-sm">
+                                    <div className="p-8 text-center text-slate-400 text-base">
                                         {hideEmptySlots ? '등록된 일정이 없습니다. 상단 태그나 시간 칸을 눌러 작성해보세요!' : '해당 시간대의 일정이 없습니다.'}
                                     </div>
                                 ) : (
@@ -589,7 +589,7 @@
                                         return (
                                             <div 
                                                 key={slot.value} 
-                                                className={`flex items-center gap-3 px-3 py-2 transition-colors ${
+                                                className={`flex items-center gap-3 px-3 py-2.5 transition-colors ${
                                                     isEditing 
                                                         ? 'bg-blue-50/70' 
                                                         : isFilled 
@@ -598,8 +598,8 @@
                                                 }`}
                                             >
                                                 {/* Left Time Badge (12h format) */}
-                                                <div className="w-20 flex-shrink-0 font-mono text-xs font-bold text-slate-500 flex flex-col justify-center">
-                                                    <span className={slot.minute === 0 ? 'text-slate-900 font-extrabold text-xs' : 'text-slate-400'}>
+                                                <div className="w-22 flex-shrink-0 font-mono text-sm font-bold text-slate-500 flex flex-col justify-center">
+                                                    <span className={slot.minute === 0 ? 'text-slate-900 font-extrabold text-sm' : 'text-slate-400'}>
                                                         {slot.label}
                                                     </span>
                                                 </div>
@@ -619,14 +619,14 @@
                                                             <input 
                                                                 type="text"
                                                                 autoFocus
-                                                                className="flex-1 px-3 py-1.5 text-sm border border-blue-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                                                className="flex-1 px-3 py-1.5 text-base border border-blue-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                                                                 placeholder="할 일 직접 입력..."
                                                                 value={inlineInputText}
                                                                 onChange={(e) => setInlineInputText(e.target.value)}
                                                             />
                                                             <button 
                                                                 type="submit"
-                                                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 whitespace-nowrap"
+                                                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 whitespace-nowrap"
                                                             >
                                                                 저장
                                                             </button>
@@ -644,11 +644,11 @@
                                                                 onClick={() => handleSlotClick(slot.value)}
                                                                 className="flex-1 cursor-pointer flex items-center gap-2 min-w-0"
                                                             >
-                                                                <span className={`text-sm font-semibold truncate ${item.completed ? 'line-through text-slate-300' : 'text-slate-800'}`}>
+                                                                <span className={`text-base font-semibold truncate ${item.completed ? 'line-through text-slate-300' : 'text-slate-800'}`}>
                                                                     {item.text}
                                                                 </span>
                                                                 {item.isRecurring && !item.recurringOriginId && (
-                                                                    <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.2 rounded font-bold whitespace-nowrap">
+                                                                    <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold whitespace-nowrap">
                                                                         반복
                                                                     </span>
                                                                 )}
@@ -660,14 +660,14 @@
                                                                     className="p-1 text-slate-300 hover:text-blue-600 rounded"
                                                                     title="수정"
                                                                 >
-                                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                                    <Edit2 className="w-4 h-4" />
                                                                 </button>
                                                                 <button 
                                                                     onClick={() => clearSlotTask(slot.value)}
                                                                     className="p-1 text-slate-300 hover:text-red-500 rounded"
                                                                     title="지우기"
                                                                 >
-                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                    <Trash2 className="w-4 h-4" />
                                                                 </button>
                                                                 <button 
                                                                     onClick={() => toggleSlotCompleted(slot.value)}
@@ -677,16 +677,16 @@
                                                                             : 'border-slate-300 hover:border-emerald-400'
                                                                     }`}
                                                                 >
-                                                                    {item.completed && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                                                    {item.completed && <Check className="w-4 h-4 stroke-[3]" />}
                                                                 </button>
                                                             </div>
                                                         </div>
                                                     ) : (
                                                         <div 
                                                             onClick={() => handleSlotClick(slot.value)}
-                                                            className="cursor-pointer py-1 text-slate-300 hover:text-blue-500 text-xs font-medium transition flex items-center gap-1 group"
+                                                            className="cursor-pointer py-1 text-slate-400 hover:text-blue-500 text-sm font-medium transition flex items-center gap-1 group"
                                                         >
-                                                            <Plus className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                            <Plus className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
                                                             <span>{activeStampTask ? `'${activeStampTask}' 바로 채우기` : '+ 터치하여 할 일 입력'}</span>
                                                         </div>
                                                     )}
